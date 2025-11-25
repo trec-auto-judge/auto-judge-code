@@ -1,4 +1,4 @@
-# TREC AutoJudge code
+# TREC AutoJudge Code
 
 This repository contains the code used for evaluation and approaches for the TREC AutoJudge shared tasks.
 
