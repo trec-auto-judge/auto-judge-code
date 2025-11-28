@@ -12,18 +12,29 @@ def load_run_failsave(path: Path):
         return []
 
     ret = []
+    error_lines = 0
     with open(path, 'r') as f:
         for l in f:
+            if error_lines > 4:
+                return []
+
             try:
                 l = json.loads(l)
             except:
+                error_lines += 1
                 continue
+
+            if not isinstance(l, dict):
+                error_lines += 1
+                continue
+
             if "responses" in l and "answer" not in l:
                 l["answer"] = l["responses"]
             if "answer" in l and "responses" not in l:
                 l["responses"] = l["answer"]
             for required_field in _REQUIRED_FIELDS:
                 if required_field not in l:
+                    error_lines += 1
                     continue
 
             if "narrative_id" in l["metadata"] and "topic_id" not in l["metadata"]:
