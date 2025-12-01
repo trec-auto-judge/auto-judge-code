@@ -1,0 +1,3 @@
+git+https://github.com/trec-auto-judge/auto-judge-code.git
+ir_axioms>=1.1
+tqdm
