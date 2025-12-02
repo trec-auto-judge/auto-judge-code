@@ -119,3 +119,19 @@ class TestEvaluation(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 TrecLeaderboardEvaluation(leaderboard, "measure-does-not-exist")
+
+    def test_evaluation_ground_truth_does_not_exist(self):
+        expected = {
+            'M1': {'mean-value': 7.25, "stdev-value": 5.14781507},
+            'M2': {'mean-value': 7.25, "stdev-value": 5.14781507},
+        }
+        with TemporaryDirectory() as d:
+            leaderboard = Path(d) / "leaderboard"
+            leaderboard.write_text(EXAMPLE_02)
+
+            te = TrecLeaderboardEvaluation(None, None)
+            actual = te.evaluate(leaderboard)
+
+            for m in expected.keys():
+                for k in expected[m].keys():
+                    self.assertAlmostEqual(expected[m][k], actual[m][k], 5, f"{m} {k}")

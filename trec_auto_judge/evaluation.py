@@ -1,11 +1,16 @@
 import pandas as pd
 from pathlib import Path
 from tira.check_format import TrecEvalLeaderboard, _fmt
+from statistics import mean, stdev
+from typing import Optional
 
 class TrecLeaderboardEvaluation():
-    def __init__(self, truth_leaderboard: Path, truth_measure: str):
-        parsed_leaderboard = self.load_leaderboard(truth_leaderboard)
-        self.ground_truth_ranking = self.extract_ranking(parsed_leaderboard, truth_measure)
+    def __init__(self, truth_leaderboard: Optional[Path], truth_measure: Optional[str]):
+        if truth_leaderboard and truth_measure:
+            parsed_leaderboard = self.load_leaderboard(truth_leaderboard)
+            self.ground_truth_ranking = self.extract_ranking(parsed_leaderboard, truth_measure)
+        else:
+            self.ground_truth_ranking = None
 
     def load_leaderboard(self, leaderboard: Path):
         if not leaderboard or not Path(leaderboard).is_file():
@@ -38,9 +43,24 @@ class TrecLeaderboardEvaluation():
         ret = {}
 
         for m in measures:
-            ret[m] = self.correlation_to_truth(self.extract_ranking(leaderboard, m))
+            if self.ground_truth_ranking:
+                ret[m] = self.correlation_to_truth(self.extract_ranking(leaderboard, m))
+            else:
+                ret[m] = self.basic_statistics(leaderboard, m)
 
         return ret
+
+    def basic_statistics(self, leaderboard, measure):
+        vals = []
+
+        for i in leaderboard:
+            if str(i["metric"]).strip() == str(measure).strip():
+                vals.append(float(i["value"]))
+
+        if len(vals) == 0:
+            raise ValueError(f"Measure {measure} does not exist.")
+
+        return {"mean-value": mean(vals), "stdev-value": stdev(vals)}
 
     def correlation_to_truth(self, ranking):
         a, b = [], []
