@@ -2,7 +2,7 @@
 
 
 <p align="center">
-   <img width=120px src="https://trec-car.cs.unh.edu/trec-auto-judge/media/trec-auto-judge-logo-small.png">
+   <img width=120px src="https://trec-auto-judge.cs.unh.edu/media/trec-auto-judge-logo-small.png">
    <br/>
    <br/>
    <a href="https://github.com/trec-auto-judge/auto-judge-code/actions/workflows/tests.yml">
@@ -12,8 +12,8 @@
    <img alt="Coverage" src="tests/coverage.svg"/>
    </a>
    <br>
-   <a href="https://trec-car.cs.unh.edu/trec-auto-judge/">Web</a> &nbsp;|&nbsp;
-   <a href="https://trec-car.cs.unh.edu/trec-auto-judge/TREC_Auto_Judge.pdf">Proposal</a>
+   <a href="https://trec-auto-judge.cs.unh.edu/">Web</a> &nbsp;|&nbsp;
+   <a href="https://trec-auto-judge.cs.unh.edu/TREC_Auto_Judge.pdf">Proposal</a>
 </p>
 
 This repository contains the code used for evaluation and approaches for the TREC AutoJudge shared tasks.
