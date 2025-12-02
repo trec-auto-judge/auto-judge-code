@@ -1,3 +1,31 @@
+---
+configs:
+- config_name: inputs
+  data_files:
+  - split: train
+    path: ["runs/*.jsonl"]
+- config_name: truths
+  data_files:
+  - split: train
+    path: ["trec-leaberboard.txt"]
+
+tira_configs:
+  resolve_inputs_to: "."
+  resolve_truths_to: "."
+  baseline:
+    link: https://github.com/trec-auto-judge/auto-judge-code/tree/main/trec25/judges/naive
+    command: /naive-baseline.py --rag-responses $inputDataset --output $outputDir/trec-leaderboard.txt
+    format:
+      name: ["trec-eval-leaderboard"]
+  input_format:
+    name: "trec-rag-runs"
+  truth_format:
+    name: "trec-eval-leaderboard"
+  evaluator:
+    image: ghcr.io/trec-auto-judge/auto-judge-code/cli:0.0.1
+    command: trec-auto-judge evaluate --input ${inputRun}/trec-leaderboard.txt --aggregate --output ${outputDir}/evaluation.prototext
+---
+
 # Minimal Spot Check Dataset
 
 This is a minimal spot-check dataset (inspired by the [rag-run-validator](https://github.com/hltcoe/rag-run-validator)) that we use to showcase inputs, outputs, and evaluations with a minimal example (**attention: this is still in development**).
@@ -83,33 +111,4 @@ The invocation above assumes an Oracle LLM Judge that outputs the ground-truth-l
 # Admin Section
 
 The following contains the hugging-face format definition of this dataset that you can use to declaratively upload the dataset with evaluation configuration to tira. Step by step guides on how to upload are in [../README.md](../README.md):
-
----
-configs:
-- config_name: inputs
-  data_files:
-  - split: train
-    path: ["corpus.jsonl.gz", "queries.jsonl"]
-- config_name: truths
-  data_files:
-  - split: test
-    path: ["trec-leaberboard"]
-
-tira_configs:
-  resolve_inputs_to: "."
-  resolve_truths_to: "."
-  baseline:
-    link: https://github.com/reneuir/lsr-benchmark/tree/main/step-03-retrieval-approaches/pyterrier-naive
-    command: /run-pyterrier.py --dataset $inputDataset --retrieval BM25 --output $outputDir
-    format:
-      name: ["run.txt", "lightning-ir-document-embeddings", "lightning-ir-query-embeddings"]
-  input_format:
-    name: "lsr-benchmark-inputs"
-    config:
-      max_size_mb: 800
-  truth_format:
-    name: "qrels.txt"
-  evaluator:
-    measures: ["nDCG@10","P@10"]
----
 
