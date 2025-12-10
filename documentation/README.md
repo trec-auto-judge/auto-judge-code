@@ -99,3 +99,12 @@ TBD ...
 </details>
 
 ## Submission Variant 2: Code Submissions
+
+### Our Goal
+
+**We want to make a reasonable set of LLM Judges easily accessible so that they can be easily re-executed.**
+
+We would like to collect approaches via pull requests into this repository via this structure:
+
+
+
