@@ -25,21 +25,9 @@ actor:
 
 data:
   test collection:
-    name: spot-check-dataset-20251202-training
-
-platform:
-  software:
-    # Which software and tools did you use for training, tunning and running your system?
-    # You can maintain the software that you used manually.
-    # Alternatively, you can use repro_eval or the tirex_tracker to track this.
-    libraries:
-      - ENTER_VALUE_HERE
-      - ENTER_VALUE_HERE
+    name: ENTER_VALUE_HERE
 
 implementation:
   source:
     # Please provide a reference to your code if possible.
-    # If you can not share your code, you can delete the implementation section.
-    # The repro_eval and/or tirex_tracker tools can track this automatically, including commits, branches, etc.
     repository: ENTER_VALUE_HERE
-
