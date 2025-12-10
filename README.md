@@ -21,6 +21,8 @@ This repository contains the code used for evaluation and approaches for the TRE
 - [trec25](trec25) the AutoJudge Pilot at TREC 2025 (**attention: this is work in progress**)
 - [trec26](trec26) the upcoming iteration at TREC 2026 (**attention: this is work in progress**)
 
+We currently develop (**attention: this is work in progress**) a step-by-step guide on how to submit at [documentation/README.md](documentation/README.md).
+
 ## What is TREC AutoJudge?
 
 
