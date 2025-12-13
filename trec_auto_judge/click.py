@@ -1,5 +1,6 @@
 from pathlib import Path
 from .io import load_runs_failsave
+from .request import Request, load_requests
 
 def option_rag_responses():
     import click
@@ -28,3 +29,34 @@ def option_rag_responses():
         return func
 
     return decorator
+
+def option_rag_topics():
+    import click
+    class ClickRagTopics(click.ParamType):
+        name = "file"
+
+        def convert(self, value, param, ctx):
+            if not value or not Path(value).is_file():
+                self.fail(f"Trying to load RAG topics from {value}, but file does not exist.", param, ctx)
+            topics = load_requests(Path(value))
+
+            if len(topics) > 0:
+                return topics
+
+            self.fail(f"{value!r} contains no RAG topics.", param, ctx)
+
+    """Provide RAG topics CLI option."""
+    def decorator(func):
+        func = click.option(
+            "--rag-topics",
+            type=ClickRagTopics(),
+            required=True,
+            help="The file that contains run_as_taskd_group topics for evaluation."
+        )(func)
+
+        return func
+
+    return decorator
+
+
+
