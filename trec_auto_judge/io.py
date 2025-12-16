@@ -77,3 +77,27 @@ def load_runs_failsave(path: Path):
             run_id_to_topics[l["run_id"]].add(l["topic_id"])
     
     return ret
+
+
+def irds_from_dir(directory):
+    from tira.ir_datasets_util import load_ir_dataset_from_local_file
+    from ir_datasets import registry
+
+    ds = load_ir_dataset_from_local_file(Path(directory), str(directory))
+    if str(directory) not in registry:
+        registry.register(str(directory), ds)
+    return ds
+
+
+def load_hf_dataset_config_or_none(c, required_fields):
+    from yaml import safe_load
+
+    if c.is_file():
+        txt = c.read_text()
+        for cfg in txt.split("---"):
+            try:
+                ret = safe_load(cfg)
+                if all(f in ret for f in required_fields):
+                    return ret
+            except:
+                pass

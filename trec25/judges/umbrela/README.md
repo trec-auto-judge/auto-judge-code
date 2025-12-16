@@ -4,6 +4,14 @@ UMBRELA implementation with DSPy. Generalized to include multi-part queries, wit
 
 While the UMBRELA prompt is designed to work with GPT-4o, this implementation is LLM model agnostic.
 
+The dependencies used here are currently in a private repository, to install them, please either reach out to Laura Dietz or Maik Fröbe to get an invitation to the currently private repository. After you have access to this repository, please clone it here:
+
+```
+git clone git@github.com:laura-dietz/scale25-crucible.git
+```
+
+The dev-container of this repository is then configured to do all installation steps after the repository is cloned.
+
 ## Original Work
 
 
