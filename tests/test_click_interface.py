@@ -43,4 +43,4 @@ class TestClickInterface(unittest.TestCase):
         result = runner.invoke(return_responses, ["--rag-responses", "/does-not-exist"])
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("Invalid value for '--rag-responses': The directory /does-not-exist does not exist", result.stderr)
+        self.assertIn("Invalid value for '--rag-responses': The directory /does-not-exist does not exist", result.output)

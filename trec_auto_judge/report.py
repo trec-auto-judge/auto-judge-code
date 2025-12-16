@@ -7,8 +7,6 @@ from io import StringIO
 from pathlib import Path
 import json
 from pydantic import BaseModel
-from nuggety.text_chunker import  get_paragraph_chunks
-from argue_eval.validation.nugget_data import Answer
 
 class TaskType(str, Enum):
     """Ragtime tasks"""
@@ -91,6 +89,7 @@ class Report(BaseModel):
         return self.get_report_text()
     
     def get_paragraphs(self) ->List[str]:
+        from nuggety.text_chunker import  get_paragraph_chunks
         return get_paragraph_chunks(self.get_text())
     
     def get_sentences(self) ->List[str]:
