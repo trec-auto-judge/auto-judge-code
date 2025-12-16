@@ -7,7 +7,7 @@ from . import TREC_25_DATA
 from trec_auto_judge import main
 from tempfile import TemporaryDirectory
 
-EXAMPLE_LEADERBOARD = str((TREC_25_DATA / "spot-check-dataset" / "trec-leaberboard.txt").absolute())
+EXAMPLE_LEADERBOARD = str((TREC_25_DATA / "spot-check-dataset" / "trec-leaderboard.txt").absolute())
 
 def evaluate_command(measure, truth=EXAMPLE_LEADERBOARD, inp=EXAMPLE_LEADERBOARD):
     cmd = ["evaluate", "--truth-leaderboard", truth, "--input", inp, "--truth-metric", measure]
@@ -23,8 +23,8 @@ def run_cmd_on_main(cmd):
 class TestEvaluationInterface(unittest.TestCase):
     def test_trec25_spot_check_runs_measure_01(self):
         expected_lines = [
-            "trec-leaberboard Measure-02 -1.0",
-            "trec-leaberboard Measure-01 1.0"
+            "trec-leaderboard Measure-02 -1.0",
+            "trec-leaderboard Measure-01 1.0"
         ]
         result, stdout = evaluate_command("Measure-01")
 
@@ -36,8 +36,8 @@ class TestEvaluationInterface(unittest.TestCase):
 
     def test_trec25_spot_check_runs_measure_02(self):
         expected_lines = [
-            "trec-leaberboard Measure-02 1.0",
-            "trec-leaberboard Measure-01 -1.0"
+            "trec-leaderboard Measure-02 1.0",
+            "trec-leaderboard Measure-01 -1.0"
         ]
         result, stdout = evaluate_command("Measure-02")
 
@@ -49,8 +49,8 @@ class TestEvaluationInterface(unittest.TestCase):
 
     def test_trec25_spot_check_runs_without_truth(self):
         expected_lines = [
-            "trec-leaberboard Measure-02 2.0",
-            "trec-leaberboard Measure-01 2.0"
+            "trec-leaderboard Measure-02 2.0",
+            "trec-leaderboard Measure-01 2.0"
         ]
         cmd = ["evaluate", "--input", EXAMPLE_LEADERBOARD]
         result, stdout = run_cmd_on_main(cmd)
@@ -72,12 +72,12 @@ class TestEvaluationInterface(unittest.TestCase):
             self.assertIsNotNone(result.exception)
             self.assertEqual(result.exit_code, 1)
             self.assertFalse(target_file.is_file())
-            self.assertIn("trec-leaberboard Measure-02 -1.0", stdout)
+            self.assertIn("trec-leaderboard Measure-02 -1.0", stdout)
 
     def test_trec25_spot_check_runs_measure_01_and_produces_output(self):
         expected_lines = [
-            "trec-leaberboard Measure-02 -1.0",
-            "trec-leaberboard Measure-01 1.0"
+            "trec-leaderboard Measure-02 -1.0",
+            "trec-leaderboard Measure-01 1.0"
         ]
 
         with TemporaryDirectory() as tmp_dir:
