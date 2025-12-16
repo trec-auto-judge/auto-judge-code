@@ -17,9 +17,6 @@ from typing import *
 from pydantic import BaseModel
 
 
-
-
-
 class UmbrelaAnnotation(BaseModel):
     run_id:str
     query_id:str
@@ -33,11 +30,11 @@ class UmbrelaAnnotation(BaseModel):
     is_match:Optional[bool] = None
     match_score:Optional[float] = None
 
+
 @click.command("umbrela_baseline")
 @click.option("--output", type=Path, help="The output file.", required=True)
 @option_rag_responses()
 @option_rag_topics()
-
 def main(rag_responses: list[dict], rag_topics: List[Request], output: Path):
     """
     A naive rag response assessor that just orders each response by its length.
@@ -50,23 +47,26 @@ def main(rag_responses: list[dict], rag_topics: List[Request], output: Path):
             metadata = rag_response["metadata"]
             run_id = metadata["run_id"]
             topic_id = metadata["narrative_id"]
-            
+
             text = " ".join([i["text"] for i in rag_response["answer"]])
-            
+
             topic = topic_dict[topic_id]
             if topic is None:
                 raise RuntimeError("Could not identify request object for topic {topic_id}")
-            
-            if (topic.title is None) or (topic.background is None) or  (topic.problem_statement is None):
+
+            if topic.title is None:
                 raise RuntimeError(f"Missing fields in report request: title {topic.title}, background:{topic.background}, problem_statement: {topic.problem_statement}.")
-            
+
+            problem_statement = topic.problem_statement if topic.problem_statement else f"Identify information that is relevant to the query {topic.title}"
+            background = topic.background if topic.background else f"I want to find relevant information on {topic.title}"
+
             prompt_objs = UmbrelaAnnotation(query_id = topic_id
                                                 , run_id = run_id
                                                 ,source_document = text
                                                 ,metadata= metadata
                                                 ,title_query = topic.title
-                                                ,background = topic.background
-                                                ,problem_statement =  topic.problem_statement
+                                                ,background = background
+                                                ,problem_statement = problem_statement
                                                 )
             alignment_input_list.append(prompt_objs)
         return alignment_input_list
@@ -94,7 +94,7 @@ def main(rag_responses: list[dict], rag_topics: List[Request], output: Path):
     prompt_input = prepare_prompts()
     print("Debug in", "\n".join(str(p) for p in prompt_input[0:4]))
     
-    prompt_output =  evaluator_run(prompt=Umbrela, output_converter=Umbrela.convert_output,alignment_input_list=prompt_input)
+    prompt_output = evaluator_run(prompt=Umbrela, output_converter=Umbrela.convert_output, alignment_input_list=prompt_input)
     print("Debug out", "\n".join(str(p) for p in prompt_input[0:4]))
 
     write_results(prompt_output=prompt_output)
