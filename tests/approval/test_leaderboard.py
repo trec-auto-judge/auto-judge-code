@@ -9,7 +9,7 @@ from approvaltests import verify_file
 class TestLeaderboard(unittest.TestCase):
     def test_valid_leaderboard(self):
         measures = {
-            "measure-01": MeanOfFloats
+            "measure-01": MeanOfFloats()
         }
 
         entries = [
@@ -25,7 +25,7 @@ class TestLeaderboard(unittest.TestCase):
 
     def test_valid_leaderboard_mean_bools_all_true(self):
         measures = {
-            "measure-01": MeanOfBools
+            "measure-01": MeanOfBools()
         }
 
         entries = [

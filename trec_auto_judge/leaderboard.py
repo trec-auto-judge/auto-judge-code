@@ -93,10 +93,10 @@ class Leaderboard:
 # Default Aggregators
 
 class MeanOfFloats():
-    def aggregate(values: Sequence[object]) -> float:
+    def aggregate(self, values: Sequence[object]) -> float:
         return mean(float(v) for v in values)
 
 class MeanOfBools():
-    def aggregate(values: Sequence[object]) -> float:
+    def aggregate(self, values: Sequence[object]) -> float:
         return mean(1.0 if bool(v) else 0.0 for v in values)
 
