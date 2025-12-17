@@ -28,17 +28,16 @@ def load_requests_from_irds(ir_dataset)->List[Request]:
         for optional_field in ["background", "original_background", "problem_statement", "limit", "word_limit"]:
             if hasattr(r, optional_field):
                 r[optional_field] = getattr(topic, optional_field)
-        r_parsed = Request.validate(r)
+        r_parsed = Request.model_validate(r)
         ret.append(r_parsed)
 
     return ret
 
-def load_requests(reports_path:Path)->List[Request]:
-    requests = list()
-    with open(file=reports_path) as f:
-        for line in f.readlines():
-            data = json.load(fp=StringIO(line))
-            request = Request.validate(data)
-            requests.append(request)
-    return requests
-
+def load_requests_from_file(file: Path)->List[Request]:
+    ret = list()
+    with open(file) as f:
+        for l in f:
+            parsed = json.loads(l)
+            request = Request.model_validate(parsed)
+            ret.append(request)
+    return ret

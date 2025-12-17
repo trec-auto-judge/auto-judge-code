@@ -43,6 +43,13 @@ class TestRagTopicsIntegration(unittest.TestCase):
         self.assertIn("Topics: 5", result.output)
         self.assertEqual(0, result.exit_code)
 
+    def test_local_file_explicit(self):
+        runner = CliRunner()
+        result = runner.invoke(topics_stats, ["--rag-topics", str(RESORUCES_DIR / "example-rag-topics.jsonl")])
+        print(result.exception)
+        self.assertIn("Topics: 2", result.output)
+        self.assertEqual(0, result.exit_code)
+
     def test_local_directory_implicit_via_rag_responses(self):
         runner = CliRunner()
         result = runner.invoke(rag_stats2, ["--rag-responses", TREC_25_DATA / "spot-check-dataset"])
