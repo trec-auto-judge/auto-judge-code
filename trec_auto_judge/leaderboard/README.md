@@ -122,3 +122,113 @@ runA    IS_MATCH all    0.5
 
 
 The leaderboard will automatically include an `all` topic based on the aggregator
+
+
+
+## Verification helpers
+
+The leaderboard module includes verification utilities to catch *silent* data issues early, especially when entries are produced by multiple components (parsers, judges, conversions) and measure names vary by use case.
+
+These functions validate two common invariants:
+
+1. **Every entry contains a complete set of measures** (prevents missing keys that otherwise cause partial aggregation or incorrect comparisons).
+
+2. **Every run reports the same set of topics** (prevents unfair “wins” from evaluating on fewer topics, and prevents aggregation from mixing incomparable sets).
+
+### `verify_complete_measures`
+
+Checks that **each `LeaderboardEntry` contains all expected measure keys** in its `values` mapping.
+
+
+```python
+def verify_complete_measures(
+    *,
+    measure_names: Sequence[MeasureName],
+    entries: Iterable[LeaderboardEntry],
+    all_topic_id: str = "all",
+    include_all_row: bool = True,
+) -> None:
+```
+
+
+* `measure_names`: the authoritative list of measures that must appear in every row.
+* `include_all_row`: if `True`, also requires the synthetic `topic_id == all_topic_id` row to be complete. If `False`, the “all” row is ignored for completeness checks (useful when verifying *before* building the “all” row).
+
+Typical use:
+
+* Right after constructing entries from a source format (e.g., converting judge outputs into `LeaderboardEntry` rows).
+* Before computing “all” rows or exporting.
+
+### `verify_complete_topics_per_run`
+
+Checks that **each `run_id` contains the same set of `topic_id`s** as all other runs.
+
+
+```python
+def verify_complete_topics_per_run(
+    *,
+    entries: Iterable[LeaderboardEntry],
+    all_topic_id: str = "all",
+    include_all_row: bool = False,
+) -> None:
+```
+
+
+* This prevents comparisons where one run is missing topics (intentionally or accidentally).
+* `include_all_row` defaults to `False` because the `all` row is synthetic and should not participate in topic coverage checks.
+
+Typical use:
+
+* After merging multiple runs into a single leaderboard.
+* Before computing run-level aggregates or ranking runs.
+
+### `verify_all`
+
+Checks all.
+
+```python
+def verify_all(
+    *,
+    measure_names: Sequence[MeasureName],
+    entries: Iterable[LeaderboardEntry],
+    all_topic_id: str = "all",
+    require_all_row_complete: bool = True,
+    require_same_topics_per_run: bool = True,
+) -> None:
+    """
+    Convenience: verify both
+      (1) every entry has all measures
+      (2) every run has the same set of topics
+    """
+```
+
+Convenience wrapper that runs:
+
+* `verify_complete_measures(..., include_all_row=require_all_row_complete)`
+* and optionally `verify_complete_topics_per_run(...)` if `require_same_topics_per_run=True`.
+
+Recommended usage patterns:
+
+* **Before building the `all` row**:
+
+  ```python
+  verify_all(
+      measure_names=list(measures.keys()),
+      entries=per_topic_entries,
+      require_all_row_complete=False,   # no all-row yet
+      require_same_topics_per_run=True,
+  )
+  ```
+
+* **After building the `all` row**:
+
+  ```python
+  verify_all(
+      measure_names=list(measures.keys()),
+      entries=leaderboard.entries,
+      require_all_row_complete=True,    # ensure all-row is complete too
+      require_same_topics_per_run=True,
+  )
+  ```
+
+These checks are designed to raise failures immediately rather than silently propagating into incorrect aggregate scores or wrong/empty leaderboards.
