@@ -152,7 +152,7 @@ def option_rag_topics():
             type=ClickRagTopics(),
             required=False,
             default="infer-dataset-from-context",
-            help="The ir-datasets ID or a directory that contains the ir-dataset or TODO...."
+            help="The rag topics. Please either pass a local file that contains Requests in jsonl format (requires fields title and request_id). Alternatively, pass an ir-datasets ID to load the topics from ir_datasets."
         )(func)
 
         return func
