@@ -117,21 +117,6 @@ class UmbrelaJudge:
             return alignment_input_list
 
 
-        # def umbrela_to_leaderboard(prompt_output: Iterable["UmbrelaAnnotation"], measures) -> Leaderboard:
-        #         per_topic_entries = [
-        #             LeaderboardEntry(
-        #                 run_id=res.run_id,
-        #                 topic_id=res.query_id,
-        #                 values={
-        #                     "GRADE": float(res.match_score),
-        #                     "IS_MATCH": bool(res.is_match),
-        #                 },
-        #             )
-        #             for res in prompt_output
-        #         ]
-        #         return Leaderboard.from_entries_with_all(measures=measures, entries=per_topic_entries)
-
-
         def umbrela_to_leaderboard(prompt_output):
             b = LeaderboardBuilder(UMBRELA_SPEC)
             b.add_records(
