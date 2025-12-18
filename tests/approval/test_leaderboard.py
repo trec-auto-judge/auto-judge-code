@@ -4,10 +4,10 @@ import unittest
 from trec_auto_judge import *
 from tempfile import TemporaryDirectory
 from pathlib import Path
-# from approvaltests import verify_file
+from approvaltests import verify_file
 
 class TestLeaderboard(unittest.TestCase):
-    def test_valid_leaderboard(self):
+    def test_valid_leaderboard_float(self):
         
         MY_SPEC = LeaderboardSpec(measures=(
             MeasureSpec("measure-01", aggregate=mean_of_floats, cast=float),
@@ -18,6 +18,8 @@ class TestLeaderboard(unittest.TestCase):
         b.add(run_id="run-01",topic_id="topic-02",values={"measure-01": 0.0})
     
         l = b.build()
+        # will throw exception is mistake found
+        verify_all(entries=l.entries,measure_names=["measure-01"])
         
         with TemporaryDirectory() as tmp_dir:
             target_file = Path(tmp_dir) / "leaderboard"

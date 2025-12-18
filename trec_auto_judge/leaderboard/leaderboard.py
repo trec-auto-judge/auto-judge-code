@@ -344,7 +344,7 @@ def verify_all(
     require_same_topics_per_run: bool = True,
     expected_topic_ids: Optional[Sequence[str]] = None,
     require_no_extra_topics: bool = True,
-) -> None:
+):
     verify_complete_measures(
         measure_names=measure_names,
         entries=entries,
