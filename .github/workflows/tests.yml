@@ -27,4 +27,4 @@ jobs:
       - name: Run unit tests
         working-directory: ${{github.workspace}}/
         run: |
-          python3 -m pytest --cov-report term --cov=trec_auto_judge
+          python3 -m pytest --cov-report term --cov=trec_auto_judge tests

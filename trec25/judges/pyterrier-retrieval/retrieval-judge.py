@@ -6,6 +6,7 @@ from collections import defaultdict
 from tqdm import tqdm
 from statistics import median
 import pandas as pd
+from tira.third_party_integrations import ensure_pyterrier_is_loaded
 
 import pyterrier as pt
 
@@ -30,7 +31,7 @@ def main(rag_responses: list[dict], rag_topics: list, output: Path):
     """
     fooo.
     """
-    pt.java.init()
+    ensure_pyterrier_is_loaded()
     tokeniser = pt.java.autoclass("org.terrier.indexing.tokenisation.Tokeniser").getTokeniser()
     def pt_tokenize(text):
         return ' '.join(tokeniser.getTokens(text))

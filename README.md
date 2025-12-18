@@ -90,13 +90,13 @@ After installation above, you can run `trec-auto-judge --help` which provides an
 Run unit tests via:
 
 ```
-PYTHONPATH=. pytest .
+PYTHONPATH=. pytest tests
 ```
 
 Create Badge (TODO: add this to CI):
 
 ```
-PYTHONPATH=. python3 -m pytest --cov-report term --cov=trec_auto_judge
+PYTHONPATH=. python3 -m pytest --cov-report term --cov=trec_auto_judge tests
 coverage report --data-file=.coverage > test-coverage
 coverage-badge -o tests/coverage.svg
 ```

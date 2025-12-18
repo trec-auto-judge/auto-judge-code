@@ -1,0 +1,56 @@
+name: Integration Tests
+
+on:
+  push:
+    branches:
+      - master
+      - staging
+  workflow_dispatch: {}
+  pull_request: {}
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Set up Dependencies
+        uses: actions/setup-python@v4
+      - name: Install the reliability_tests from the repo
+        working-directory: ${{github.workspace}}
+        run: |
+          pip3 install .[test]
+          pip3 install --no-deps ir_datasets
+      - name: Prepare Integration Tests
+        working-directory: ${{github.workspace}}/
+        run: |
+          python3 -m pytest integration-tests
+
+      - name: Test trec25/judges/naive
+        run: |
+          tira-cli code-submission \
+            --dry-run \
+            --path trec25/judges/naive/ \
+            --task trec-auto-judge \
+            --dataset spot-check-dataset-with-irds-20251218-training \
+            --command '/naive-baseline.py --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
+
+      - name: Test trec25/judges/pyterrier-retrieval
+        run: |
+          tira-cli code-submission \
+            --dry-run \
+            --path trec25/judges/pyterrier-retrieval/ \
+            --task trec-auto-judge \
+            --dataset spot-check-dataset-with-irds-20251218-training \
+            --command '/retrieval-judge.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
+
+#      - name: Test trec25/judges/umbrela/
+#        run: |
+#          tira-cli code-submission --dry-run --path trec25/judges/umbrela/ --task trec-auto-judge --dataset spot-check-dataset-with-irds-20251218-training --command '/umbrela_baseline.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
