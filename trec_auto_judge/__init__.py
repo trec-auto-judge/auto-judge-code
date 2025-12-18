@@ -1,10 +1,5 @@
 from click import group
-<<<<<<< HEAD
-from .request import Request, load_requests_from_irds, load_requests_from_file
-=======
-from .report import Report, load_report
-from .request import Request, load_requests
->>>>>>> 0a2139c (intermittent changes trying to get new TIRA working)
+from .request import Request, load_requests_from_irds, load_requests_from_file, load_report
 from ._commands._evaluate import evaluate
 from ._commands._export_corpus import export_corpus
 
