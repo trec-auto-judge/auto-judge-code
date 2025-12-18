@@ -7,11 +7,13 @@ from statistics import mean
 from dataclasses import dataclass, field
 
 
+
 from trec_auto_judge.click import option_rag_responses, option_rag_topics
 from trec_auto_judge.request import Request
 from trec_auto_judge.report import Report
 from trec_auto_judge.leaderboard import *
 from trec_auto_judge.qrels import *
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 from trec_auto_judge import AutoJudge
@@ -20,6 +22,9 @@ from trec_auto_judge import AutoJudge
 =======
 from trec_auto_judge import AutoJudge
 >>>>>>> 47a29fd (wrapping the UmbrelaJudge in the AutoJudge Protocol)
+=======
+from trec_auto_judge import *
+>>>>>>> 11fb5c6 (Leaderboard in its own sub-module with Dev Docs)
 
 # crucible
 from nuggety.align import evaluator_run, Umbrela
@@ -128,6 +133,14 @@ class UmbrelaJudge:
                     "IS_MATCH": r.is_match,
                 },
             )
+            
+            verify_all(
+                measure_names=UMBRELA_SPEC.names,
+                entries=b.entries(),                  # staged per-topic entries
+                all_topic_id=UMBRELA_SPEC.all_topic_id,
+                require_all_row_complete=False,       # no all-rows yet
+                require_same_topics_per_run=True,
+            )            
             return b.build()
 
         prompt_input = prepare_prompts()

@@ -172,6 +172,11 @@ class LeaderboardBuilder:
         for r in records:
             self.add(run_id=run_id(r), topic_id=topic_id(r), values=get_values(r))
 
+    def entries(self) -> tuple[LeaderboardEntry, ...]:
+        """Return the currently staged per-topic entries (no synthetic 'all' rows)."""
+        return tuple(self._rows)
+
+
     def build(self) -> Leaderboard:
         """
         Build a Leaderboard with synthetic per-run `all_topic_id` rows.
@@ -203,6 +208,131 @@ class LeaderboardBuilder:
             entries=tuple(self._rows + all_rows),
             all_topic_id=self.spec.all_topic_id,
         )
+
+
+# === Verification ====
+
+
+
+@dataclass(frozen=True)
+class VerificationError(Exception):
+    """Raised when leaderboard completeness constraints are violated."""
+    message: str
+
+    def __str__(self) -> str:
+        return self.message
+
+
+def verify_complete_measures(
+    *,
+    measure_names: Sequence[MeasureName],
+    entries: Iterable[LeaderboardEntry],
+    all_topic_id: str = "all",
+    include_all_row: bool = True,
+) -> None:
+    """
+    Verify that every (run_id, topic_id) entry contains all measures.
+
+    By default, also checks the synthetic all_topic_id rows if present.
+    """
+    required = set(measure_names)
+
+    missing_reports: list[str] = []
+    for e in entries:
+        if not include_all_row and e.topic_id == all_topic_id:
+            continue
+        present = set(e.values.keys())
+        missing = required - present
+        extra = present - required
+        if missing or extra:
+            parts = []
+            if missing:
+                parts.append(f"missing={sorted(missing)}")
+            if extra:
+                parts.append(f"extra={sorted(extra)}")
+            missing_reports.append(f"{e.run_id}/{e.topic_id}: " + ", ".join(parts))
+
+    if missing_reports:
+        preview = "\n  ".join(missing_reports[:25])
+        more = "" if len(missing_reports) <= 25 else f"\n  ... ({len(missing_reports) - 25} more)"
+        raise VerificationError(
+            "Leaderboard entries do not match the measure schema:\n  " + preview + more
+        )
+
+
+def verify_complete_topics_per_run(
+    *,
+    entries: Iterable[LeaderboardEntry],
+    all_topic_id: str = "all",
+    include_all_row: bool = False,
+) -> None:
+    """
+    Verify that all runs have the same set of topic_ids.
+
+    This catches cases where run A has topics {t1,t2} but run B has {t1,t3},
+    which makes per-run comparisons misleading.
+    """
+    by_run: dict[str, Set[str]] = {}
+    for e in entries:
+        if not include_all_row and e.topic_id == all_topic_id:
+            continue
+        by_run.setdefault(e.run_id, set()).add(e.topic_id)
+
+    if not by_run:
+        return
+
+    runs = sorted(by_run.keys())
+    reference_run = runs[0]
+    reference_topics = by_run[reference_run]
+
+    diffs: list[str] = []
+    for r in runs[1:]:
+        tset = by_run[r]
+        missing = reference_topics - tset
+        extra = tset - reference_topics
+        if missing or extra:
+            parts = []
+            if missing:
+                parts.append(f"missing_topics={sorted(missing)}")
+            if extra:
+                parts.append(f"extra_topics={sorted(extra)}")
+            diffs.append(f"{r} vs {reference_run}: " + ", ".join(parts))
+
+    if diffs:
+        preview = "\n  ".join(diffs[:25])
+        more = "" if len(diffs) <= 25 else f"\n  ... ({len(diffs) - 25} more)"
+        raise VerificationError(
+            f"Runs do not share the same topic set (reference={reference_run}):\n  {preview}{more}"
+        )
+
+
+def verify_all(
+    *,
+    measure_names: Sequence[MeasureName],
+    entries: Iterable[LeaderboardEntry],
+    all_topic_id: str = "all",
+    require_all_row_complete: bool = True,
+    require_same_topics_per_run: bool = True,
+) -> None:
+    """
+    Convenience: verify both
+      (1) every entry has all measures
+      (2) every run has the same set of topics
+    """
+    verify_complete_measures(
+        measure_names=measure_names,
+        entries=entries,
+        all_topic_id=all_topic_id,
+        include_all_row=require_all_row_complete,
+    )
+    if require_same_topics_per_run:
+        verify_complete_topics_per_run(
+            entries=entries,
+            all_topic_id=all_topic_id,
+            include_all_row=False,
+        )
+        
+
 
 
 #  === Example aggregators (optional helpers) ====
