@@ -14,4 +14,4 @@ RUN uv pip install --system -r /opt/scale25-crucible/requirements.txt \
 
 ENV PYTHONPATH=/opt/scale25-crucible/ 
 
-ADD umbrela-baseline.py /umbrela-baseline.py
+ADD umbrela_baseline.py /umbrela_baseline.py
