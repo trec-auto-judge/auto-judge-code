@@ -1,5 +1,7 @@
 from click import group
 from .request import Request, load_requests_from_irds, load_requests_from_file, load_report
+from .report import Report, load_report
+from .request import Request, load_requests, load_requests_from_irds
 from ._commands._evaluate import evaluate
 from ._commands._export_corpus import export_corpus
 

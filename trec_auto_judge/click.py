@@ -1,6 +1,8 @@
 from pathlib import Path
 from .io import load_runs_failsave
 from .request import Request, load_requests_from_irds, load_requests_from_file
+
+from .request import Request, load_requests_from_irds
 import click
 
 
@@ -36,6 +38,7 @@ def option_rag_responses():
 class ClickIrDataset(click.ParamType):
     name = "ir-dataset"
 
+<<<<<<< HEAD
     def fail_if_ir_datasets_is_not_installed(self, param, ctx, msg=""):
         try:
             import ir_datasets
@@ -78,6 +81,33 @@ class ClickIrDataset(click.ParamType):
             if not irds_config:
                 raise ValueError("ToDo: Better error handling of wrong configurations")
 
+=======
+    def convert(self, value, param, ctx):
+        from ir_datasets import registry
+        from tira.third_party_integrations import ir_datasets
+        from .io import irds_from_dir, load_hf_dataset_config_or_none
+
+        if value == "infer-dataset-from-context":
+            candidate_files = set()
+            if "rag_responses" in ctx.params:
+                for r in ctx.params["rag_responses"]:
+                    if "path" in r:
+                        p = Path(r["path"]).parent
+                        candidate_files.add(p / "README.md")
+                        candidate_files.add(p.parent / "README.md")
+            irds_config = None
+            base_path = None
+            for c in candidate_files:
+                irds_config = load_hf_dataset_config_or_none(c, ["ir_dataset"])
+                if irds_config:
+                    base_path = c.parent
+                    irds_config = irds_config["ir_dataset"]
+                    break
+
+            if not irds_config:
+                raise ValueError("ToDo: Better error handling of wrong configurations")
+
+>>>>>>> 720edc1 (add ir-datasets as backend to rag-topics)
             if "ir_datasets_id" in irds_config:
                 return ir_datasets.load(irds_config["ir_datasets_id"])
             elif "directory" in irds_config:
@@ -91,10 +121,14 @@ class ClickIrDataset(click.ParamType):
         if value and Path(value).is_dir() and (Path(value) / "queries.jsonl").is_file() and (Path(value) / "corpus.jsonl.gz").is_file():
             return irds_from_dir(value)
 
+<<<<<<< HEAD
         if len(str(value).split("/") == 2):
             return ir_datasets.load(value)
         else:
             raise ValueError("ToDo: Better error handling of incomplete configurations")
+=======
+        return ir_datasets.load(value)
+>>>>>>> 720edc1 (add ir-datasets as backend to rag-topics)
 
 
 def option_ir_dataset():
@@ -114,6 +148,7 @@ def option_ir_dataset():
 
 
 class ClickRagTopics(ClickIrDataset):
+<<<<<<< HEAD
     name = "file-or-ir-dataset"
 
     def fail_if_empty_or_return_otherwise(self, value, param, ctx, ret):
@@ -142,6 +177,22 @@ class ClickRagTopics(ClickIrDataset):
 
         ret = load_requests_from_irds(ds)
         return self.fail_if_empty_or_return_otherwise(value, param, ctx, ret)
+=======
+    name = "ir-dataset"
+
+    def convert(self, value, param, ctx):
+        ds = super().convert(value, param, ctx)
+
+        if not ds:
+            self.fail(f"I could not load the rag topics for ir_dataset {value}.", param, ctx)
+        
+        ret = load_requests_from_irds(ds)
+
+        if len(ret) > 0:
+            return ret
+
+        self.fail(f"{value!r} contains no RAG topics.", param, ctx)
+>>>>>>> 720edc1 (add ir-datasets as backend to rag-topics)
 
 
 def option_rag_topics():
@@ -152,7 +203,11 @@ def option_rag_topics():
             type=ClickRagTopics(),
             required=False,
             default="infer-dataset-from-context",
+<<<<<<< HEAD
             help="The rag topics. Please either pass a local file that contains Requests in jsonl format (requires fields title and request_id). Alternatively, pass an ir-datasets ID to load the topics from ir_datasets."
+=======
+            help="The ir-datasets ID or a directory that contains the ir-dataset or TODO...."
+>>>>>>> 720edc1 (add ir-datasets as backend to rag-topics)
         )(func)
 
         return func
