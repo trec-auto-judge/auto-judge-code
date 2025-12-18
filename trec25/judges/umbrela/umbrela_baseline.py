@@ -45,23 +45,12 @@ UMBRELA_SPEC = LeaderboardSpec(measures=(
 ))
 
 
-
-def umbrela_to_qrels(
-    prompt_output: Iterable["UmbrelaAnnotation"],
-    *,
-    grade_fn: Callable[["UmbrelaAnnotation"], int],
-) -> Qrels:
-    qrels: Qrels = []
-    for res in prompt_output:
-        qrels.append(
-            QrelEntry(
-                query_id=res.query_id,
-                doc_id=doc_id_md5(res.source_document),
-                grade=grade_fn(res),
-            )
-        )
-    return qrels
-
+UMBRELA_QRELS = QrelsSpec["UmbrelaAnnotation"](
+    topic_id=lambda r: r.query_id,
+    doc_id=lambda r: doc_id_md5(r.source_document),
+    grade=lambda r: r.match_score,
+    on_duplicate="error"
+)
 
 class UmbrelaJudge:
     def judge(
