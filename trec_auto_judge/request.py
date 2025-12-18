@@ -32,3 +32,13 @@ def load_requests_from_irds(ir_dataset)->List[Request]:
         ret.append(r_parsed)
 
     return ret
+
+def load_requests(reports_path:Path)->List[Request]:
+    requests = list()
+    with open(file=reports_path) as f:
+        for line in f.readlines():
+            data = json.load(fp=StringIO(line))
+            request = Request.validate(data)
+            requests.append(request)
+    return requests
+
