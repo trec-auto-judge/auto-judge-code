@@ -45,10 +45,16 @@ class ReportMetaData(BaseModel):
     evaldata: Optional[Dict[str,Any]] = None
 
     def model_post_init(self, __context__: dict | None = None) -> None:
+        if self.topic_id is not None and self.narrative_id is not None and str(self.topic_id) != str(self.narrative_id):
+            raise ValueError(
+                f"Inconsistent topic identifiers: "
+                f"topic_id={self.topic_id}, narrative_id={self.narrative_id}"
+            )            
+
         if self.topic_id is None:
             # print("metadata topic_id is None, looking at other fields", self)
             # RAG input
-            if self.narrative_id is not None:
+            if self.narrative_id is not None and self.topic_id is None:
                 if isinstance(self.narrative_id,int):
                     self.topic_id = f"{self.narrative_id}"
                 else:

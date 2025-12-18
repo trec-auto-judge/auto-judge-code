@@ -68,12 +68,13 @@ from .report import load_report, Report
 def load_runs_failsave(path: Path)->List[Report]:
     ret = []
     path = path.absolute()
+    print(f"globs: {glob(f"{path}/*") + glob(f"{path}/*/*") + glob(f"{path}/*/*/*")}")
 
     for f in sorted(glob(f"{path}/*") + glob(f"{path}/*/*") + glob(f"{path}/*/*/*")):
         # ret.extend(load_run_failsave(Path(f)))
         print("Report path", f)
         ret.extend(load_report(Path(f)))
-        return ret
+    return ret
 
 
 def irds_from_dir(directory):
