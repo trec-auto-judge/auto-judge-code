@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install the reliability_tests from the repo
+      - name: Install treg-auto-judge from the repo
         working-directory: ${{github.workspace}}
         run: |
           pip3 install .[test]

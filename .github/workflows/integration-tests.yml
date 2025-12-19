@@ -23,7 +23,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
       - name: Set up Dependencies
         uses: actions/setup-python@v4
-      - name: Install the reliability_tests from the repo
+      - name: Install trec-auto-judge from the repo
         working-directory: ${{github.workspace}}
         run: |
           pip3 install .[test]
@@ -51,6 +51,13 @@ jobs:
             --dataset spot-check-dataset-with-irds-20251218-training \
             --command '/retrieval-judge.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
 
-#      - name: Test trec25/judges/umbrela/
-#        run: |
+      - name: In Progress trec25/judges/umbrela/
+        run: |
+          git clone https://mam10eks:${GIT_AUTH_TOKEN}@github.com/laura-dietz/scale25-crucible.git
+          cd trec25/judges/umbrela/scale25-crucible
+          git fetch
+          git checkout --track origin/minor-modifications
+          git pull origin minor-modifications
+          ls -lha .
+          cd ../../../..
 #          tira-cli code-submission --dry-run --path trec25/judges/umbrela/ --task trec-auto-judge --dataset spot-check-dataset-with-irds-20251218-training --command '/umbrela_baseline.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
