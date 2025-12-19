@@ -51,7 +51,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_via_rag_responses(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats2, ["--rag-responses", TREC_25_DATA / "spot-check-dataset"])
+        result = runner.invoke(ir_dataset_stats2, ["--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs"])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 1400", result.output)
@@ -60,7 +60,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_via_rag_responses2(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats3, ["--rag-responses", TREC_25_DATA / "spot-check-dataset"])
+        result = runner.invoke(ir_dataset_stats3, ["--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs"])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 1400", result.output)
@@ -69,7 +69,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_via_rag_responses3(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats3, ["--ir-dataset", str(RESORUCES_DIR / "example-irds-corpus"), "--rag-responses", TREC_25_DATA / "spot-check-dataset"])
+        result = runner.invoke(ir_dataset_stats3, ["--ir-dataset", str(RESORUCES_DIR / "example-irds-corpus"), "--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs"])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 3", result.output)
@@ -78,7 +78,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_via_rag_responses4(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats3, ["--rag-responses", TREC_25_DATA / "spot-check-dataset", "--ir-dataset", str(RESORUCES_DIR / "example-irds-corpus")])
+        result = runner.invoke(ir_dataset_stats3, ["--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs", "--ir-dataset", str(RESORUCES_DIR / "example-irds-corpus")])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 3", result.output)
@@ -87,7 +87,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_via_rag_responses5(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats2, ["--rag-responses", TREC_25_DATA / "spot-check-dataset", "--ir-dataset", str(RESORUCES_DIR / "example-irds-corpus")])
+        result = runner.invoke(ir_dataset_stats2, ["--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs", "--ir-dataset", str(RESORUCES_DIR / "example-irds-corpus")])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 3", result.output)
@@ -96,7 +96,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_on_local_directory1(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats2, ["--rag-responses", str(RESORUCES_DIR / "spot-check-fully-local")])
+        result = runner.invoke(ir_dataset_stats2, ["--rag-responses", str(RESORUCES_DIR / "spot-check-fully-local" / "runs")])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 3", result.output)
@@ -105,7 +105,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
 
     def test_local_directory_implicit_on_local_directory2(self):
         runner = CliRunner()
-        result = runner.invoke(ir_dataset_stats3, ["--rag-responses", str(RESORUCES_DIR / "spot-check-fully-local")])
+        result = runner.invoke(ir_dataset_stats3, ["--rag-responses", str(RESORUCES_DIR / "spot-check-fully-local" / "runs")])
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 3", result.output)
