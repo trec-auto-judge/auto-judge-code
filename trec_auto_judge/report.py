@@ -228,6 +228,7 @@ def load_report(reports_path:Path)->List[Report]:
         for line in f.readlines():
             data = json.load(fp=StringIO(line))
             report = Report.validate(data)
+            report.path = reports_path.absolute()
             reports.append(report)
     return reports
 

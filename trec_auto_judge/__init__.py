@@ -1,7 +1,7 @@
 from click import group
 from typing import Protocol, Sequence, Optional
 
-from .click_maik import option_rag_responses, option_rag_topics, option_ir_dataset
+from .click_plus import option_rag_responses, option_rag_topics, option_ir_dataset
 from .report import Report, load_report
 from .request import Request, load_requests_from_irds, load_requests_from_file
 from .leaderboard.leaderboard import Leaderboard, LeaderboardEntry, MeasureSpec, LeaderboardSpec,  LeaderboardBuilder, VerificationError, verify_complete_measures, verify_complete_topics_per_run, verify_all, mean_of_bools, mean_of_floats, mean_of_ints 
