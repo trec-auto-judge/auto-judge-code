@@ -53,7 +53,7 @@ jobs:
 
       - name: In Progress trec25/judges/umbrela/
         run: |
-          git clone https://mam10eks:${GIT_AUTH_TOKEN}@github.com/laura-dietz/scale25-crucible.git
+          git clone https://mam10eks:${{ secrets.GIT_AUTH_TOKEN }}@github.com/laura-dietz/scale25-crucible.git
           cd trec25/judges/umbrela/scale25-crucible
           git fetch
           git checkout --track origin/minor-modifications
