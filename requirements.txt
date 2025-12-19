@@ -1,0 +1,2 @@
+approvaltests>=16.0.0
+ir_datasets

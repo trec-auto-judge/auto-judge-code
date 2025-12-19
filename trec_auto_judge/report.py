@@ -18,7 +18,7 @@ class ReportMetaData(BaseModel):
     """Report meta data for requested reports"""
     team_id:str
     run_id:str
-    topic_id:str
+    topic_id:str = None
     collection_ids:Optional[List[str]] = None
     task:Optional[TaskType] = None
     description:Optional[str] = None
@@ -37,13 +37,36 @@ class ReportMetaData(BaseModel):
     # include narrative_id (topic id) and narrative (topic text)
     # if the track requires them; 
     # collection_ids should be ["msmarco_v2.1_doc_segmented"].
-    narrative_id:Optional[str] = None  # topic_id
+    narrative_id:Optional[str|int] = None  # topic_id
     narrative:Optional[str] = None  # topic text
 
 
     # AutoJudge
     evaldata: Optional[Dict[str,Any]] = None
-    
+
+    def model_post_init(self, __context__: dict | None = None) -> None:
+        if self.topic_id is not None and self.narrative_id is not None and str(self.topic_id) != str(self.narrative_id):
+            raise ValueError(
+                f"Inconsistent topic identifiers: "
+                f"topic_id={self.topic_id}, narrative_id={self.narrative_id}"
+            )            
+
+        if self.topic_id is None:
+            # print("metadata topic_id is None, looking at other fields", self)
+            # RAG input
+            if self.narrative_id is not None and self.topic_id is None:
+                if isinstance(self.narrative_id,int):
+                    self.topic_id = f"{self.narrative_id}"
+                else:
+                    self.topic_id = self.narrative_id
+            
+
+        if self.topic_id is None:
+            raise RuntimeError(f"ReportMetaData does not contain topic_id or narrative_id: {self}")
+
+        # Expose as RAG format
+        if self.narrative_id is None:
+            self.narrative_id = self.topic_id
 
     class Config:
         populate_by_name = True
@@ -60,28 +83,49 @@ class ReportMetaData(BaseModel):
 
     
 class NeuclirReportSentence(BaseModel):
-    text:str
     citations: Optional[List[str]] = None    
+    text:str
     metadata: Optional[Dict[str,Any]] = None
     evaldata: Optional[Dict[str,Any]] = None
 
 
 class RagtimeReportSentence(BaseModel):
-    text:str
     citations: Optional[Dict[str,float]] = None
+    text:str
     metadata: Optional[Dict[str,Any]] = None
     evaldata: Optional[Dict[str,Any]] = None
 
-ReportSentence: TypeAlias = RagtimeReportSentence | NeuclirReportSentence
+class Rag24ReportSentence(BaseModel):
+    citations: Optional[List[int]] = None    
+    text:str
+    metadata: Optional[Dict[str,Any]] = None
+    evaldata: Optional[Dict[str,Any]] = None
+
+
+ReportSentence: TypeAlias = RagtimeReportSentence | NeuclirReportSentence | Rag24ReportSentence
 
 class Report(BaseModel):
     is_ragtime:bool = True
     metadata:ReportMetaData
-    responses:Optional[List[NeuclirReportSentence]|List[RagtimeReportSentence]]=None
-    answer:Optional[List[NeuclirReportSentence]|List[RagtimeReportSentence]]=None
+    responses:Optional[List[NeuclirReportSentence]|List[RagtimeReportSentence]|List[Rag24ReportSentence]]=None
+    answer:Optional[List[NeuclirReportSentence]|List[RagtimeReportSentence]|List[Rag24ReportSentence]]=None
     path:Optional[Path]=None
     references:Optional[List[str]]=None
     
+    def model_post_init(self, __context__: dict | None = None) -> None:
+        if self.responses is None:
+            # RAG
+            self.responses = self.answer
+
+        # RAGTIME validation
+        if self.responses is None:
+            raise RuntimeError(f"Report does not contain responses or amswer: {self}")
+
+        # Expose as RAG format
+        if self.answer is None:
+            self.answer = self.responses
+
+        
     def get_report_text(self):
         return " ".join([sent.text for sent in self.responses])
 
@@ -184,6 +228,7 @@ def load_report(reports_path:Path)->List[Report]:
         for line in f.readlines():
             data = json.load(fp=StringIO(line))
             report = Report.validate(data)
+            report.path = reports_path.absolute()
             reports.append(report)
     return reports
 

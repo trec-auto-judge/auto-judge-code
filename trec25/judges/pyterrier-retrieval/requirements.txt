@@ -1,6 +1,5 @@
 python-terrier
 tira
 ir_datasets
-tirex-tracker>=0.2.18
+tirex-tracker==0.2.15
 click
-git+https://github.com/trec-auto-judge/auto-judge-code.git

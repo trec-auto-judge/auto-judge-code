@@ -62,10 +62,11 @@ class ClickIrDataset(click.ParamType):
             candidate_files = set()
             if "rag_responses" in ctx.params:
                 for r in ctx.params["rag_responses"]:
-                    if "path" in r:
-                        p = Path(r["path"]).parent
+                    if r and r.path:
+                        p = Path(r.path).parent
                         candidate_files.add(p / "README.md")
                         candidate_files.add(p.parent / "README.md")
+                        candidate_files.add(p.parent.parent / "README.md")
             irds_config = None
             base_path = None
             for c in candidate_files:
