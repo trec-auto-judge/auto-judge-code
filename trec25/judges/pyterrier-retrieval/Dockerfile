@@ -7,3 +7,7 @@ RUN apt-get update \
 ADD requirements.txt /tmp/requirements.txt
 
 RUN pip3 install -r /tmp/requirements.txt
+
+RUN pip3 install git+https://github.com/trec-auto-judge/auto-judge-code.git
+
+ADD retrieval-judge.py /retrieval-judge.py
