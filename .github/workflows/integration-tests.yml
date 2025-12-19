@@ -53,7 +53,7 @@ jobs:
             --dataset spot-check-dataset-with-irds-20251218-training \
             --command '/retrieval-judge.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
 
-      - name: In Progress trec25/judges/umbrela/
+      - name: Test trec25/judges/umbrela/
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
