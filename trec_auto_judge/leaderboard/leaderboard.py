@@ -330,6 +330,8 @@ def verify_leaderboard_topics(
 
     if require_no_extras:
         extras = {e.topic_id for e in entries if (include_all_row or e.topic_id != all_topic_id)} - expected
+        if include_all_row:
+            extras = extras - {all_topic_id}
         if extras:
             raise ValueError(f"Found unexpected topic_id(s) in leaderboard, e.g. {sorted(extras)[:5]}")
 
