@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-from trec_auto_judge import option_rag_responses, Report, LeaderboardSpec, LeaderboardBuilder, mean_of_floats, MeasureSpec, option_rag_topics
-import click
-from pathlib import Path
+from trec_auto_judge import Report, LeaderboardSpec, LeaderboardBuilder, mean_of_floats, MeasureSpec, AutoJudge, auto_judge_to_click_command, Leaderboard, Qrels, Sequence, Request, Optional
 from collections import defaultdict
 from tqdm import tqdm
-from statistics import median
-import pandas as pd
 from tira.third_party_integrations import ensure_pyterrier_is_loaded
 import pyterrier as pt
 
@@ -34,46 +30,40 @@ LEADERBOARD_SPEC = LeaderboardSpec(measures=(
 ))
 
 
-@click.command("retrieval-judge")
-@click.option("--output", type=Path, help="The output file.", required=True)
-@option_rag_responses()
-@option_rag_topics()
-def main(rag_responses: list[dict], rag_topics: list, output: Path):
-    """
-    fooo.
-    """
-    ensure_pyterrier_is_loaded()
-    tokeniser = pt.java.autoclass("org.terrier.indexing.tokenisation.Tokeniser").getTokeniser()
-    def pt_tokenize(text):
-        return ' '.join(tokeniser.getTokens(text))
+class RetrievalJudge(AutoJudge):
+    def judge(self, rag_responses: Sequence["Report"], rag_topics: Sequence["Request"]) -> tuple["Leaderboard", Optional["Qrels"]]:
+        ensure_pyterrier_is_loaded()
+        tokeniser = pt.java.autoclass("org.terrier.indexing.tokenisation.Tokeniser").getTokeniser()
+        def pt_tokenize(text):
+            return ' '.join(tokeniser.getTokens(text))
 
-    topic_id_to_title = {i.request_id: pt_tokenize(i.title) for i in rag_topics}
-    topic_id_to_responses = group_by_topic_id(rag_responses)
-    all_systems = set([i.metadata.run_id for i in rag_responses])
+        topic_id_to_title = {i.request_id: pt_tokenize(i.title) for i in rag_topics}
+        topic_id_to_responses = group_by_topic_id(rag_responses)
+        all_systems = set([i.metadata.run_id for i in rag_responses])
 
-    ret = LeaderboardBuilder(LEADERBOARD_SPEC)
+        ret = LeaderboardBuilder(LEADERBOARD_SPEC)
 
-    for topic in tqdm(topic_id_to_responses.keys(), "Process Topics"):
-        query_text = topic_id_to_title[topic]
-        docs = [{"docno": system, "text": system_response} for system, system_response in topic_id_to_responses[topic].items()]
-        system_to_wmodel_to_score = defaultdict(lambda: defaultdict(lambda: 1000))
-        index = pt.IterDictIndexer("/not-needed/for-memory-index", meta={'docno' : 100}, type=pt.IndexingType.MEMORY).index(docs)
+        for topic in tqdm(topic_id_to_responses.keys(), "Process Topics"):
+            query_text = topic_id_to_title[topic]
+            docs = [{"docno": system, "text": system_response} for system, system_response in topic_id_to_responses[topic].items()]
+            system_to_wmodel_to_score = defaultdict(lambda: defaultdict(lambda: 1000))
+            index = pt.IterDictIndexer("/not-needed/for-memory-index", meta={'docno' : 100}, type=pt.IndexingType.MEMORY).index(docs)
 
-        for wmodel in LEADERBOARD_SPEC.measures:
-            retriever = pt.terrier.Retriever(index, wmodel=wmodel.name)
-            rtr = retriever.search(query_text)
-            run_id_to_score = defaultdict(lambda: 0)
-            for _, i in rtr.iterrows():
-                run_id_to_score[i["docno"]] = max(0, 1000 - i["rank"])
+            for wmodel in LEADERBOARD_SPEC.measures:
+                retriever = pt.terrier.Retriever(index, wmodel=wmodel.name)
+                rtr = retriever.search(query_text)
+                run_id_to_score = defaultdict(lambda: 0)
+                for _, i in rtr.iterrows():
+                    run_id_to_score[i["docno"]] = max(0, 1000 - i["rank"])
+                
+                for system in all_systems:
+                    system_to_wmodel_to_score[system][wmodel.name] = run_id_to_score.get(system)
             
             for system in all_systems:
-                system_to_wmodel_to_score[system][wmodel.name] = run_id_to_score.get(system)
-        
-        for system in all_systems:
-            ret.add(run_id=system, topic_id=topic, values=system_to_wmodel_to_score[system])
+                ret.add(run_id=system, topic_id=topic, values=system_to_wmodel_to_score[system])
 
-    ret.build().write(output=output)
+        return ret.build(), None
 
 
 if __name__ == '__main__':
-    main()
+    auto_judge_to_click_command(RetrievalJudge(), "retrieval-judge")()
