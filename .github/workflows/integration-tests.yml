@@ -57,7 +57,7 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
         run: |
-          git clone https://mam10eks:${{ secrets.GIT_AUTH_TOKEN }}@github.com/laura-dietz/scale25-crucible.git trec25/judges/umbrela/scale25-crucible
+          git clone https://laura-dietz:${{ secrets.GIT_AUTH_TOKEN }}@github.com/laura-dietz/scale25-crucible.git trec25/judges/umbrela/scale25-crucible
           cd trec25/judges/umbrela/scale25-crucible
           git fetch
           git checkout --track origin/minor-modifications

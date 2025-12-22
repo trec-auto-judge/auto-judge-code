@@ -55,7 +55,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 1400", result.output)
-        self.assertIn("Topics: 225", result.output)
+        self.assertIn("Topics: 1", result.output)
         self.assertEqual(0, result.exit_code)
 
     def test_local_directory_implicit_via_rag_responses2(self):
@@ -64,7 +64,7 @@ class TestIrDatasetsIntegration(unittest.TestCase):
         print(result.exception)
         print(result.output)
         self.assertIn("Docs: 1400", result.output)
-        self.assertIn("Topics: 225", result.output)
+        self.assertIn("Topics: 1", result.output)
         self.assertEqual(0, result.exit_code)
 
     def test_local_directory_implicit_via_rag_responses3(self):

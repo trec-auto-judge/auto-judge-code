@@ -4,6 +4,7 @@ from .request import load_requests_from_irds, load_requests_from_file
 import click
 from . import AutoJudge
 
+
 class ClickRagResponses(click.ParamType):
     name = "dir"
 
@@ -163,18 +164,35 @@ def option_rag_topics():
 
 
 def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str) -> int:
+    from .qrels.qrels import write_qrel_file, Qrels, verify_qrels
+    from .leaderboard.leaderboard import verify_leaderboard_topics
+    from .request import Request
+    from .report import Report
+    
+    from typing import Iterable
 
     @click.command(cmd_name)
     @option_rag_responses()
     @option_rag_topics()
     @click.option("--output", type=Path, help="The output file.", required=True)
-    def run(rag_topics, rag_responses, output):
+    def run(rag_topics:Iterable[Request], rag_responses:Iterable[Report], output:Path):
         leaderboard, qrels = auto_judge.judge(rag_responses, rag_topics)
         print("foo", leaderboard)
+        
+        topic_ids = {t.request_id for t in rag_topics}
+        verify_leaderboard_topics(expected_topic_ids=topic_ids,
+            entries=leaderboard.entries,
+            include_all_row=True,
+            require_no_extras=True
+        )
         leaderboard.write(output)
+        
+        
         if qrels is not None:
-            raise ValueError("ToDo: write qrels...")
-
+            verify_qrels(qrels=qrels
+                         , expected_topic_ids=topic_ids
+                         , require_no_extras=True)
+            write_qrel_file(qrel_out_file=output.with_suffix(".qrels"), qrels=qrels)
         return 0
 
     return run

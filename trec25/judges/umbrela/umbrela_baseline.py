@@ -44,10 +44,16 @@ def umbrela_to_qrels(
 
 
 class UmbrelaJudge(AutoJudge):
+    # def llm_endpoint_config():
+    #     return { "model":"MySmolLLM"}
+    
+    
     def judge(
         self,
         rag_responses: Sequence[Report],
         rag_topics: Sequence[Request],
+        # task_spec: None | TaskName | TaskDescr
+        # llm: LLMLite 
     ) -> tuple[Leaderboard, Optional[Qrels]]:
         """
         Umbrela response assessor that just orders each response by its length.
@@ -117,8 +123,8 @@ class UmbrelaJudge(AutoJudge):
         print("Debug out", "\n".join(str(p) for p in prompt_input[0:1]))
 
         leaderboard = umbrela_to_leaderboard(prompt_output=prompt_output)
-        #qrels = umbrela_to_qrels(prompt_output)
-        qrels = None
+        qrels = umbrela_to_qrels(prompt_output)
+        # qrels = None
         return (leaderboard, qrels)
 
 
