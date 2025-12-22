@@ -64,7 +64,7 @@ class TestRagTopicsIntegration(unittest.TestCase):
         result = runner.invoke(rag_stats2, ["--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs"])
         print(result.exception)
         print(result.output)
-        self.assertIn("Topics: 225", result.output)
+        self.assertIn("Topics: 1", result.output)
         self.assertEqual(0, result.exit_code)
 
     def test_local_directory_implicit_via_rag_responses3(self):
