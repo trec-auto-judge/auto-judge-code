@@ -3,7 +3,7 @@ from typing import Protocol, Sequence, Optional
 from .report import Report, load_report
 from .request import Request, load_requests_from_irds, load_requests_from_file
 from .leaderboard.leaderboard import Leaderboard, LeaderboardEntry, MeasureSpec, LeaderboardSpec,  LeaderboardBuilder, VerificationError, verify_complete_measures, verify_complete_topics_per_run, verify_all, mean_of_bools, mean_of_floats, mean_of_ints 
-from .qrels.qrels import QrelsSpec, QrelRow, Qrels, build_qrels, verify_all_topics_present, verify_no_unexpected_topics, verify_qrels_topics, write_qrel_file, doc_id_md5
+from .qrels.qrels import QrelsSpec, QrelRow, Qrels, build_qrels, verify_all_topics_present, verify_no_unexpected_topics, verify_qrels, write_qrel_file, doc_id_md5
 __version__ = '0.0.1'
 
 

@@ -1,4 +1,5 @@
-from typing import TypeVar, Generic, Callable, Iterable, Sequence, Iterable, Union
+import collections
+from typing import Dict, Tuple, TypeVar, Generic, Callable, Iterable, Sequence, Iterable, Union
 
 from pathlib import Path
 from dataclasses import dataclass
@@ -93,17 +94,23 @@ def verify_no_unexpected_topics(
     if extras:
         raise ValueError(f"Found unexpected topic_id(s) in qrels, e.g. {sorted(extras)[:5]}")
 
-
-def verify_qrels_topics(
+def verify_no_dupes(qrels:Qrels) -> None:
+    checked:Dict[Tuple[str,str]] = dict()
+    for r in qrels.rows:
+        if (r.topic_id, r.doc_id) in checked:
+            raise ValueError(f"Found duplicate entry for topic={r.topic_id} doc_id={r.doc_id}: {checked[(r.topic_id, r.doc_id)]} when adding qrel row {r}")
+        checked[(r.topic_id, r.doc_id)]=r
+        
+def verify_qrels(
     *,
     expected_topic_ids: Sequence[str],
     qrels: Qrels,
     require_no_extras: bool = False,
 ) -> None:
+    verify_no_dupes(qrels=qrels)
     verify_all_topics_present(expected_topic_ids=expected_topic_ids, qrels=qrels)
     if require_no_extras:
         verify_no_unexpected_topics(expected_topic_ids=expected_topic_ids, qrels=qrels)
-
 
 # === serialization ===
 
