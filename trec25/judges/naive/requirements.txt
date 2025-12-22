@@ -1,2 +1,3 @@
 git+https://github.com/trec-auto-judge/auto-judge-code.git
 tqdm
+ir-datasets
