@@ -39,7 +39,7 @@ jobs:
             --dry-run \
             --path trec25/judges/naive/ \
             --task trec-auto-judge \
-            --dataset spot-check-dataset-with-irds-20251218-training \
+            --dataset spot-check-dataset-20251222-training \
             --command '/naive-baseline.py --rag-responses $inputDataset/runs --rag-topics $inputDataset --output $outputDir/leaderboard.trec'
 
       - name: Test trec25/judges/pyterrier-retrieval
@@ -48,7 +48,7 @@ jobs:
             --dry-run \
             --path trec25/judges/pyterrier-retrieval/ \
             --task trec-auto-judge \
-            --dataset spot-check-dataset-with-irds-20251218-training \
+            --dataset spot-check-dataset-20251222-training \
             --command '/retrieval-judge.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
 
       - name: Test trec25/judges/umbrela/
@@ -68,5 +68,5 @@ jobs:
             --dry-run \
             --path trec25/judges/umbrela/ \
             --task trec-auto-judge \
-            --dataset spot-check-dataset-with-irds-20251218-training \
+            --dataset spot-check-dataset-20251222-training \
             --command '/umbrela_baseline.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
