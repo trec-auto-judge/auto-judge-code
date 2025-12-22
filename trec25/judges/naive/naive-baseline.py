@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from trec_auto_judge import option_rag_responses, Report, LeaderboardSpec, LeaderboardBuilder, mean_of_floats, MeasureSpec
+from trec_auto_judge import AutoJudge, Sequence, Optional, Report, Request, LeaderboardSpec, LeaderboardBuilder, mean_of_floats, MeasureSpec, auto_judge_to_click_command, Leaderboard, Qrels
 import click
 from pathlib import Path
 from collections import defaultdict
@@ -19,24 +19,19 @@ NAIVE_LEADERBOARD_SPEC = LeaderboardSpec(measures=(
 ))
 
 
-@click.command("naive_baseline")
-@click.option("--output", type=Path, help="The output file.", required=True)
-@option_rag_responses()
-def main(rag_responses: list[Report], output: Path):
-    """
-    A naive rag response assessor that just orders each response by its length.
-    """
-    ret = LeaderboardBuilder(NAIVE_LEADERBOARD_SPEC)
+class NaiveJudge(AutoJudge):
+    def judge(self, rag_responses: Sequence["Report"], rag_topics: Sequence["Request"]) -> tuple["Leaderboard", Optional["Qrels"]]:
+        ret = LeaderboardBuilder(NAIVE_LEADERBOARD_SPEC)
 
-    for rag_response in tqdm(rag_responses, "Process RAG Responses"):
-        vals = {
-            "LENGTH": len(rag_response.get_report_text().split()),
-            "RANDOM": rand(rag_response.metadata.run_id + rag_response.metadata.topic_id)
-        }
-        ret.add(run_id=rag_response.metadata.run_id, topic_id=rag_response.metadata.topic_id, values=vals)
+        for rag_response in tqdm(rag_responses, "Process RAG Responses"):
+            vals = {
+                "LENGTH": len(rag_response.get_report_text().split()),
+                "RANDOM": rand(rag_response.metadata.run_id + rag_response.metadata.topic_id)
+            }
+            ret.add(run_id=rag_response.metadata.run_id, topic_id=rag_response.metadata.topic_id, values=vals)
 
-    ret.build().write(output=output)
+        return ret.build(), None
 
 
 if __name__ == '__main__':
-    main()
+    auto_judge_to_click_command(NaiveJudge(), "naive-judge")()

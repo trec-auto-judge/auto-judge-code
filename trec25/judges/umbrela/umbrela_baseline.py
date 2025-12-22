@@ -1,27 +1,11 @@
 #!/usr/bin/env python3
-import click
-from pathlib import Path
-from collections import defaultdict
-from tqdm import tqdm
-from statistics import mean
-from dataclasses import dataclass, field
-
-
-
-# from trec_auto_judge.click import option_rag_responses, option_rag_topics
-# from trec_auto_judge.request import Request
-# from trec_auto_judge.report import Report
-# from trec_auto_judge.leaderboard import *
-# from trec_auto_judge.qrels import *
 from trec_auto_judge import *
 
 # crucible
 from nuggety.align import evaluator_run, Umbrela
 from nuggety.alignment_result import *
-import dspy
 from typing import *
 from pydantic import BaseModel
-
 
 
 class UmbrelaAnnotation(BaseModel):
@@ -38,7 +22,6 @@ class UmbrelaAnnotation(BaseModel):
     match_score:Optional[float] = None
 
 
-
 UMBRELA_SPEC = LeaderboardSpec(measures=(
     MeasureSpec("GRADE", aggregate=mean_of_floats, cast=float),
     MeasureSpec("IS_MATCH", aggregate=mean_of_bools, cast=bool),
@@ -53,20 +36,19 @@ UMBRELA_QRELS = QrelsSpec["UmbrelaAnnotation"](
 )
 
 
-
 def umbrela_to_qrels(
     prompt_output: Iterable["UmbrelaAnnotation"]
 ) -> Qrels:
     qrels = build_qrels(records=prompt_output, spec=UMBRELA_QRELS)    
     return qrels
 
-class UmbrelaJudge:
+
+class UmbrelaJudge(AutoJudge):
     def judge(
         self,
         rag_responses: Sequence[Report],
         rag_topics: Sequence[Request],
     ) -> tuple[Leaderboard, Optional[Qrels]]:
-            
         """
         Umbrela response assessor that just orders each response by its length.
         """
@@ -107,7 +89,6 @@ class UmbrelaJudge:
                 alignment_input_list.append(prompt_objs)
             return alignment_input_list
 
-
         def umbrela_to_leaderboard(prompt_output):
             b = LeaderboardBuilder(UMBRELA_SPEC)
             b.add_records(
@@ -140,21 +121,6 @@ class UmbrelaJudge:
         qrels = None
         return (leaderboard, qrels)
 
-# below here all should move into the TIRA CLI, or be a main class with its own CLI for development
-
-@click.command("umbrela_baseline")
-@option_rag_responses()
-@option_rag_topics()
-@click.option("--output", type=Path, help="The output file.", required=True)
-def main(rag_responses: List[Report], rag_topics: List[Request], output:Path):
-    qrels_opt=None
-
-    (leaderboard, qrels_opt) = UmbrelaJudge().judge(rag_responses=rag_responses, rag_topics=rag_topics)
-    # (leaderboard, qrels_opt) = judge(rag_responses=rag_responses, rag_topics=rag_topics)
-    # write_leaderboard(leaderboard=leaderboard, output=output)
-    leaderboard.write(output=output)
-    if qrels_opt is not None:
-        write_qrel_file(qrel_out_file=output.with_suffix(".qrels"), qrels= qrels_opt)
 
 if __name__ == '__main__':
-    main()
+    auto_judge_to_click_command(UmbrelaJudge(), "umbrela_baseline")()

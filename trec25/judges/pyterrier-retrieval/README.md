@@ -22,3 +22,9 @@ Idea is roughly from this paper:
 
 ```
 
+## Example Usage
+
+```
+./retrieval-judge.py --output leaderboard.trec --rag-responses ../../datasets/spot-check-dataset/runs/
+```
+

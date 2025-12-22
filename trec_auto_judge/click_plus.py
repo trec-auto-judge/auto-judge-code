@@ -1,8 +1,8 @@
 from pathlib import Path
 from .io import load_runs_failsave
-from .request import Request, load_requests_from_irds, load_requests_from_file
+from .request import load_requests_from_irds, load_requests_from_file
 import click
-
+from . import AutoJudge
 
 class ClickRagResponses(click.ParamType):
     name = "dir"
@@ -67,6 +67,7 @@ class ClickIrDataset(click.ParamType):
                         candidate_files.add(p / "README.md")
                         candidate_files.add(p.parent / "README.md")
                         candidate_files.add(p.parent.parent / "README.md")
+  
             irds_config = None
             base_path = None
             for c in candidate_files:
@@ -159,3 +160,21 @@ def option_rag_topics():
         return func
 
     return decorator
+
+
+def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str) -> int:
+
+    @click.command(cmd_name)
+    @option_rag_responses()
+    @option_rag_topics()
+    @click.option("--output", type=Path, help="The output file.", required=True)
+    def run(rag_topics, rag_responses, output):
+        leaderboard, qrels = auto_judge.judge(rag_responses, rag_topics)
+        print("foo", leaderboard)
+        leaderboard.write(output)
+        if qrels is not None:
+            raise ValueError("ToDo: write qrels...")
+
+        return 0
+
+    return run
