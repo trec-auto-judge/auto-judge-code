@@ -574,8 +574,8 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
             # non-2xx: parse Retry-After if present
             retry_after = self._parse_retry_after(headers)
 
-            if _is_overload_status(status):
-                # bump global cooldown with server suggestion (or floor)
+            if _is_overload_status(status) or status == 408:
+                # Timeout (408) or overload suggests server might be struggling
                 await self._cooldown.bump(retry_after or self.cfg.cooldown_floor_s or 1.0)
 
             if attempt >= self.cfg.max_attempts or not _is_retriable_status(status):
