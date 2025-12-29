@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, TextIO, Union, Type
 from io import StringIO
 from pathlib import Path
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class TaskType(str, Enum):
     """Ragtime tasks"""
@@ -68,8 +68,7 @@ class ReportMetaData(BaseModel):
         if self.narrative_id is None:
             self.narrative_id = self.topic_id
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     def set_topic_ids(self):
         self.narrative_id = self.topic_id
