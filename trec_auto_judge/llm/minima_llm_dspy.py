@@ -1,4 +1,4 @@
-# minimallm_dspy.py
+# minima_llm_dspy.py
 from __future__ import annotations
 
 import typing
@@ -15,7 +15,7 @@ from dspy.utils.exceptions import AdapterParseError
 from pydantic import BaseModel
 
 from .llm_protocol import MinimaLlmRequest
-from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm, get_force_refresh, reset_force_refresh, set_force_refresh, set_last_cached
+from .minima_llm import MinimaLlmFailure, OpenAIMinimaLlm, get_force_refresh, reset_force_refresh, set_force_refresh, set_last_cached
 
 
 # ====== More tolerant chat adapter ========

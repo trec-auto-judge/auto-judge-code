@@ -1,4 +1,4 @@
-# minimal_llm.py
+# minima_llm.py
 from __future__ import annotations
 
 """Minimal LLM endpoint. OpenAI-compatible async adapter (stdlib-only).
@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from .llm_config import BatchConfig, MinimaLlmConfig
-from .llm_protocol import AsyncMinimaLlmBackend, Json, MinimaLlmRequest, MinimaLlmResponse
+from .llm_protocol import AsyncMinimaLlmBackend, Json, MinimaLlmFailure, MinimaLlmRequest, MinimaLlmResponse
 
 import contextvars
 # Task-local flag for cache bypass (safe for parallel async execution)
@@ -70,30 +70,6 @@ def get_force_refresh() -> bool:
 
 T = TypeVar("T")
 R = TypeVar("R")
-
-
-@dataclass(frozen=True)
-class MinimaLlmFailure:
-    request_id: str
-    error_type: str
-    message: str
-    attempts: int
-    status: Optional[int] = None
-    body_snippet: Optional[str] = None
-    timeout_s: Optional[float] = None
-    attempt_timestamps: Tuple[float, ...] = ()
-
-    def format_attempts(self) -> str:
-        """Format attempt timestamps relative to first attempt."""
-        if not self.attempt_timestamps:
-            return ""
-        t0 = self.attempt_timestamps[0]
-        times = [f"+{t - t0:.1f}s" for t in self.attempt_timestamps]
-        return f"[{', '.join(times)}]"
-
-
-Result = Union[MinimaLlmResponse, MinimaLlmFailure]
-
 
 
 # ----------------------------
@@ -424,6 +400,8 @@ async def run_batched_callable(
             except asyncio.QueueEmpty:
                 return
 
+            # Reset contextvar to prevent stale state from prior task bleeding through
+            set_last_cached(False)
             hb.mark_start()  # We don't know yet if this was cached, makes the count wrong.
             cached = False
             try:
@@ -458,7 +436,7 @@ async def run_batched_callable(
             hb.maybe_print(total=total, failed=fc.count)
             if hb.done >= total:
                 return
-            await asyncio.sleep(delay=hb._every_s)
+            await asyncio.sleep(hb._every_s)
 
     workers = [asyncio.create_task(worker()) for _ in range(max(1, int(batch_config.num_workers)))]
     hb_task = asyncio.create_task(heartbeat_loop())
@@ -600,7 +578,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
 
         return await asyncio.to_thread(_do)
 
-    async def generate(self, req: MinimaLlmRequest, *, force_refresh: bool = False) -> Result:
+    async def generate(self, req: MinimaLlmRequest, *, force_refresh: bool = False) -> MinimaLlmResult:
         """
         Generate a response for the given request.
 
@@ -623,6 +601,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
             if not force_refresh:
                 cached = self._cache.get(cache_key)
                 if cached is not None:
+                    set_last_cached(True)
                     return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1], cached=True)
 
         payload: Json = {
@@ -687,6 +666,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                 if self._cache is not None and cache_key is not None:
                     self._cache.put(cache_key, str(text), data)
 
+                set_last_cached(False)
                 return MinimaLlmResponse(request_id=req.request_id, text=str(text), raw=data)
 
             # non-2xx: parse Retry-After if present
@@ -721,7 +701,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
     # Batch runner
     # ----------------------------
 
-    async def run_batched(self, requests: List[MinimaLlmRequest]) -> List[Result]:
+    async def run_batched(self, requests: List[MinimaLlmRequest]) -> List[MinimaLlmResult]:
         """
         Execute a batch using the config's batch policy and return results.
 

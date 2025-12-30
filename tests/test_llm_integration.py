@@ -137,7 +137,7 @@ async def test_dspy_adapter_parse_error_retry():
     from unittest.mock import patch
 
     from trec_auto_judge.llm import get_force_refresh
-    from trec_auto_judge.llm.minimallm_dspy import run_dspy_batch, MinimaLlmDSPyLM
+    from trec_auto_judge.llm.minima_llm_dspy import run_dspy_batch, MinimaLlmDSPyLM
 
     # Simple signature for testing
     class QA(dspy.Signature):

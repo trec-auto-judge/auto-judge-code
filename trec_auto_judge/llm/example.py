@@ -4,7 +4,7 @@
 import asyncio
 from typing import List
 from .llm_protocol import MinimaLlmRequest, MinimaLlmResponse
-from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm
+from .minima_llm import MinimaLlmFailure, OpenAIMinimaLlm
 from .llm_config import MinimaLlmConfig
 
 

@@ -2,8 +2,8 @@
 import asyncio
 import dspy
 from trec_auto_judge.llm.llm_config import MinimaLlmConfig
-from trec_auto_judge.llm.minimal_llm import OpenAIMinimaLlm
-from trec_auto_judge.llm.minimallm_dspy import MinimaLlmDSPyLM
+from trec_auto_judge.llm.minima_llm import OpenAIMinimaLlm
+from trec_auto_judge.llm.minima_llm_dspy import MinimaLlmDSPyLM
 
 
 class QuestionAnswering(dspy.Signature):

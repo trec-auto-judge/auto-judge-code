@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
 
 Json = Dict[str, Any]
 
@@ -51,6 +51,32 @@ class MinimaLlmResponse:
     cached: bool = False  # True if returned from prompt cache
 
 
+
+@dataclass(frozen=True)
+class MinimaLlmFailure:
+    request_id: str
+    error_type: str
+    message: str
+    attempts: int
+    status: Optional[int] = None
+    body_snippet: Optional[str] = None
+    timeout_s: Optional[float] = None
+    attempt_timestamps: Tuple[float, ...] = ()
+
+    def format_attempts(self) -> str:
+        """Format attempt timestamps relative to first attempt."""
+        if not self.attempt_timestamps:
+            return ""
+        t0 = self.attempt_timestamps[0]
+        times = [f"+{t - t0:.1f}s" for t in self.attempt_timestamps]
+        return f"[{', '.join(times)}]"
+
+
+MinimaLlmResult = Union[MinimaLlmResponse, MinimaLlmFailure]
+
+
+
+
 @runtime_checkable
 class AsyncMinimaLlmBackend(Protocol):
     """
@@ -60,7 +86,7 @@ class AsyncMinimaLlmBackend(Protocol):
     implement rate limiting, retries, and backpressure internally.
     """
 
-    async def generate(self, req: MinimaLlmRequest) -> MinimaLlmResponse:
+    async def generate(self, req: MinimaLlmRequest) -> MinimaLlmResult:
         """Perform one LLM call and return the generated text."""
         ...
 
