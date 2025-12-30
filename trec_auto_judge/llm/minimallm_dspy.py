@@ -8,12 +8,6 @@ import asyncio
 import inspect
 import re
 
-import contextvars
-# Task-local flag for cache bypass (safe for parallel async execution)
-# _force_refresh_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('force_refresh', default=False)
-# _last_cached_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('last_cached', default=False)     
-
-
 import dspy
 from dspy.adapters.chat_adapter import ChatAdapter
 from dspy.utils.exceptions import AdapterParseError
@@ -21,7 +15,7 @@ from dspy.utils.exceptions import AdapterParseError
 from pydantic import BaseModel
 
 from .llm_protocol import MinimaLlmRequest
-from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm, _force_refresh_ctx, set_last_cached
+from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm, get_force_refresh, reset_force_refresh, set_force_refresh, set_last_cached
 
 
 # ====== More tolerant chat adapter ========
@@ -242,10 +236,7 @@ class MinimaLlmDSPyLM(_BaseLM):  # type: ignore[misc]
             DSPy expects a list of completions. We return a singleton list.
         """
         # Check contextvar for force_refresh (set by retry logic)
-        force_refresh = force_refresh or _force_refresh_ctx.get()
-
-        # Debug: see every LLM call
-        # print(f"DEBUG acall: force_refresh={force_refresh}")
+        force_refresh = force_refresh or get_force_refresh()
 
         if messages is None:
             if prompt is None:
@@ -550,7 +541,7 @@ async def run_dspy_batch(
         for attempt in range(max_attempts):
             # On retry, force refresh to bypass cached response that caused error
             if attempt > 0:
-                token = _force_refresh_ctx.set(True)
+                token = set_force_refresh(True)
             try:
                 # Run prediction
                 result = await predictor.acall(**kwargs)
@@ -573,7 +564,7 @@ async def run_dspy_batch(
                 continue
             finally:
                 if attempt > 0:
-                    _force_refresh_ctx.reset(token)
+                    reset_force_refresh(token)
 
         # All retries exhausted
         raise last_error  # type: ignore[misc]

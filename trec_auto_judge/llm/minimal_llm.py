@@ -53,6 +53,20 @@ def get_last_cached() -> bool:
     """Get cache status from most recent generate() in this async task."""
     return _last_cached_ctx.get()
 
+def set_force_refresh(force_refresh: bool)->contextvars.Token[bool]:
+    """Call in generate() to force re-issuing the prompt (e.g. when response parsing failed)
+
+    Adapter authors should call this when `acall` does not pass the `force_refresh` flag to the LLM backend.
+    """
+    return _force_refresh_ctx.set(force_refresh)
+
+def reset_force_refresh(token:contextvars.Token[bool]):
+    _force_refresh_ctx.reset(token)
+    
+def get_force_refresh() -> bool:
+    """Get force_refresh requests for recent generate() in this async task."""
+    return _force_refresh_ctx.get()
+
 
 T = TypeVar("T")
 R = TypeVar("R")
