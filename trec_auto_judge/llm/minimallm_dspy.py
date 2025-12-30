@@ -1,24 +1,27 @@
 # minimallm_dspy.py
 from __future__ import annotations
 
-import asyncio
-import contextvars
-import inspect
 import typing
 from typing import Any, Callable, Dict, List, Optional, Type, Union, cast, get_args
 
+import asyncio
+import inspect
+import re
+
+import contextvars
 # Task-local flag for cache bypass (safe for parallel async execution)
-_force_refresh_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('force_refresh', default=False)
+# _force_refresh_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('force_refresh', default=False)
+# _last_cached_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('last_cached', default=False)     
+
 
 import dspy
 from dspy.adapters.chat_adapter import ChatAdapter
 from dspy.utils.exceptions import AdapterParseError
-import re
 
 from pydantic import BaseModel
 
 from .llm_protocol import MinimaLlmRequest
-from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm
+from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm, _force_refresh_ctx, set_last_cached
 
 
 # ====== More tolerant chat adapter ========
@@ -257,10 +260,12 @@ class MinimaLlmDSPyLM(_BaseLM):  # type: ignore[misc]
             extra=kwargs if kwargs else None,
         )
 
+
         resp = await self._minimallm.generate(req, force_refresh=force_refresh)
         if isinstance(resp, MinimaLlmFailure):
             raise RuntimeError(f"{resp.error_type}: {resp.message}")
-        return [resp.text]   # this is where we lose the "cached" attribute
+        set_last_cached(resp.cached)
+        return [resp.text]
 
     # Some DSPy internals/adapters call forward/aforward.
     async def aforward(self, *args: Any, **kwargs: Any) -> List[str]:

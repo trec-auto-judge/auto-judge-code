@@ -33,6 +33,27 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tup
 from .llm_config import BatchConfig, MinimaLlmConfig
 from .llm_protocol import AsyncMinimaLlmBackend, Json, MinimaLlmRequest, MinimaLlmResponse
 
+import contextvars
+# Task-local flag for cache bypass (safe for parallel async execution)
+_force_refresh_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('force_refresh', default=False)
+_last_cached_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar('last_cached', default=False)
+
+
+# Public API for adapter authors
+def set_last_cached(cached: bool) -> None:
+    """Call after generate() to record cache status for heartbeat tracking.
+
+    Adapter authors should call this when their adapter unwraps MinimaLlmResponse
+    and loses the cached attribute.
+    """
+    _last_cached_ctx.set(cached)
+
+
+def get_last_cached() -> bool:
+    """Get cache status from most recent generate() in this async task."""
+    return _last_cached_ctx.get()
+
+
 T = TypeVar("T")
 R = TypeVar("R")
 
@@ -58,6 +79,7 @@ class MinimaLlmFailure:
 
 
 Result = Union[MinimaLlmResponse, MinimaLlmFailure]
+
 
 
 # ----------------------------
@@ -258,7 +280,7 @@ class _Heartbeat:
 
     def mark_start(self) -> None:
         """Mark that a request has been sent (only counts LLM calls, not cache hits)."""
-        self._interval_llm_sent += 1
+        self._interval_llm_sent += 1  # Assume that this call is not cached (we don't know yet, but we pull back the count in `mark_done` if need to be)
 
     def mark_done(self, *, cached: bool = False) -> None:
         self._last_done = time.monotonic()
@@ -397,9 +419,8 @@ async def run_batched_callable(
                     fc.record(result)
                 # Check if result was from cache (MinimaLlmResponse has cached attr)
                 else:
-                    # The problem is that DSPy adapter unwraps the MinimaLlmRespone object, and that's where we drop the cached flag.
-                    # cached = result.cached  
-                    cached = bool(getattr(result, "cached", False))
+                    # Get cached status. Since the DSPy adapter unwraps the MinimaLlmRespone object, and drops the cached flag, we use a context var as a fall-back
+                    cached = bool(getattr(result, "cached", False)) or get_last_cached() 
                 results[i] = result
             except Exception as e:
                 # Code errors (NameError, TypeError, etc.) propagate immediately
