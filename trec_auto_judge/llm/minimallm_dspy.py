@@ -3,14 +3,132 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
+import typing
+from typing import Any, Callable, Dict, List, Optional, Type, Union, cast, get_args
 
 import dspy
+from dspy.adapters.chat_adapter import ChatAdapter
+from dspy.utils.exceptions import AdapterParseError
+import re
+
 from pydantic import BaseModel
 
 from .llm_protocol import MinimaLlmRequest
 from .minimal_llm import MinimaLlmFailure, OpenAIMinimaLlm
 
+
+# ====== More tolerant chat adapter ========
+
+
+class TolerantChatAdapter(ChatAdapter):
+    # Matches a well-formed header anywhere in a line, e.g. [[ ## answerability ## ]]
+    # Group captures the raw field name between the ## ... ## markers.
+    _HEADER_RE = re.compile(
+        r"\[\[\s*##\s*(?P<name>[^#\]\r\n]+?)\s*##\s*\]\]",
+        flags=re.IGNORECASE,
+    )
+
+    @classmethod
+    def normalize_field_name(cls, raw: str) -> str:
+        # Mirror your old normalization: lower + spaces to underscores
+        return raw.strip().lower().replace(" ", "_")
+
+    @classmethod
+    def is_optional_type(cls, tp):
+        """General helper: returns True if annotation is Optional[...]"""
+        return (
+            getattr(tp, "__origin__", None) is typing.Union
+            and type(None) in getattr(tp, "__args__", ())
+        )
+
+    @classmethod
+    def is_optional_float(cls, ann):
+        """Return True if annotation is Optional[float] or Union[float, NoneType]."""
+        return cls.is_optional_type(ann) and float in typing.get_args(ann)
+
+    @classmethod
+    def try_parse_float(cls, val):
+        """Safely parse float, or return None if invalid."""
+        try:
+            return float(str(val).strip())
+        except (ValueError, TypeError):
+            return None
+
+    @classmethod
+    def _is_non_value(cls, s: str) -> bool:
+        return s.strip().lower() in {"", "none", "null"}
+
+    def parse(self, signature, completion: str):
+        # 1) Stream-parse into sections, allowing headers anywhere in the line.
+        sections: list[tuple[str | None, list[str]]] = [(None, [])]
+        current_k, current_lines = sections[-1]
+
+        def push_text(txt: str):
+            txt = txt.strip()
+            if txt:
+                current_lines.append(txt)
+
+        for raw_line in completion.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            last_end = 0
+            for m in self._HEADER_RE.finditer(line):
+                # Text before the header belongs to the current section
+                before = line[last_end : m.start()]
+                if before:
+                    push_text(before)
+
+                # Start a new section at this header
+                header = self.normalize_field_name(m.group("name"))
+                sections.append((header, []))
+                current_k, current_lines = sections[-1]
+
+                last_end = m.end()
+
+            # Trailing text after the last header belongs to the current section
+            after = line[last_end:]
+            if after:
+                push_text(after)
+
+        # 2) Reduce sections into {field: value} for known output fields.
+        parsed: dict[str, typing.Any] = {}
+        for k, lines in sections:
+            if k in signature.output_fields:
+                val = "\n".join(lines).strip()
+                if self._is_non_value(val):
+                    continue
+                parsed[k] = val  # last occurrence wins
+
+        # 3) Fill missing fields + coerce Optional[float].
+        for name, field in signature.output_fields.items():
+            annotation = field.annotation
+
+            if name in parsed:
+                val = parsed[name]
+                if self.is_optional_float(annotation):
+                    parsed[name] = self.try_parse_float(val)
+            else:
+                if self.is_optional_type(annotation):
+                    parsed[name] = None
+                else:
+                    raise AdapterParseError(
+                        adapter_name="TolerantChatAdapter",
+                        signature=signature,
+                        lm_response=completion,
+                        parsed_result=parsed,
+                        message=f"Missing required field: {name}",
+                    )
+
+        return parsed
+
+    
+dspy.settings.configure(adapter=TolerantChatAdapter())
+
+
+
+# ==============
 
 def _resolve_dspy_base_lm() -> Type[Any]:
     """
@@ -94,10 +212,22 @@ class MinimaLlmDSPyLM(_BaseLM):  # type: ignore[misc]
         self,
         prompt: Optional[str] = None,
         messages: Optional[List[Dict[str, Any]]] = None,
+        *,
+        force_refresh: bool = False,
         **kwargs: Any,
     ) -> List[str]:
         """
         Async LM call used by DSPy.
+
+        Parameters
+        ----------
+        prompt : str, optional
+            Single prompt string (converted to user message)
+        messages : list, optional
+            OpenAI-format message list
+        force_refresh : bool
+            If True, bypass cache lookup and make a fresh LLM call.
+            Useful for retrying when DSPy parsing fails on a cached response.
 
         Returns
         -------
@@ -117,7 +247,7 @@ class MinimaLlmDSPyLM(_BaseLM):  # type: ignore[misc]
             extra=kwargs if kwargs else None,
         )
 
-        resp = await self._minimallm.generate(req)
+        resp = await self._minimallm.generate(req, force_refresh=force_refresh)
         if isinstance(resp, MinimaLlmFailure):
             raise RuntimeError(f"{resp.error_type}: {resp.message}")
         return [resp.text]

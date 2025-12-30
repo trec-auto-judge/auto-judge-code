@@ -248,13 +248,16 @@ class _Heartbeat:
         self._last_print = self._start
         self._cached_count = 0
         self._llm_count = 0
+        self.done = 0
 
     def mark_done(self, *, cached: bool = False) -> None:
         self._last_done = time.monotonic()
         if cached:
             self._cached_count += 1
+            self.done += 1
         else:
             self._llm_count += 1
+            self.done += 1
 
     @staticmethod
     def _fmt_eta(seconds: float) -> str:
@@ -268,7 +271,7 @@ class _Heartbeat:
             return f"{m:d}m{s:02d}s"
         return f"{s:d}s"
 
-    def maybe_print(self, *, done: int, total: int, failed: int) -> None:
+    def maybe_print(self, *, total: int, failed: int) -> None:
         now = time.monotonic()
 
         if self._every_s > 0 and (now - self._last_print) >= self._every_s:
@@ -277,7 +280,7 @@ class _Heartbeat:
             # ETA estimation based on LLM calls only (not cache hits)
             # Cache hits are instant, so including them skews the rate
             llm_done = self._llm_count
-            remaining = max(0, total - done)
+            remaining = max(0, total - self.done)
 
             if llm_done > 0 and elapsed > 0:
                 llm_rate = llm_done / elapsed  # LLM items per second
@@ -287,13 +290,12 @@ class _Heartbeat:
             else:
                 eta_str = "?"
 
-            # Show cache stats if any
-            cache_str = f" cached={self._cached_count}" if self._cached_count > 0 else ""
-
             print(
                 f"[{elapsed:7.1f}s] "
-                f"completed={done}/{total} "
-                f"failed={failed}{cache_str} "
+                f"completed={self.done}/{total} "
+                f"cached={self._cached_count} "
+                f"failed={failed} "
+                f"remaining={remaining} "
                 f"eta={eta_str}"
             )
             self._last_print = now
@@ -373,7 +375,10 @@ async def run_batched_callable(
                     cached = bool(result.cached)
                 results[i] = result
             except Exception as e:
-                # Fallback for non-LLM exceptions
+                # Code errors (NameError, TypeError, etc.) propagate immediately
+                if isinstance(e, (NameError, TypeError, AttributeError, SyntaxError, ImportError)):
+                    raise
+                # LLM and transport errors are recorded as failures
                 f = MinimaLlmFailure(
                     request_id=f"input-{i}",
                     error_type=type(e).__name__,
@@ -388,17 +393,23 @@ async def run_batched_callable(
 
     async def heartbeat_loop() -> None:
         while True:
-            done = sum(1 for x in results if x is not None)
-            hb.maybe_print(done=done, total=total, failed=fc.count)
-            if done >= total:
+            hb.maybe_print(total=total, failed=fc.count)
+            if hb.done >= total:
                 return
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(delay=hb._every_s)
 
     workers = [asyncio.create_task(worker()) for _ in range(max(1, int(batch_config.num_workers)))]
     hb_task = asyncio.create_task(heartbeat_loop())
 
-    await asyncio.gather(*workers)
-    await hb_task
+    try:
+        await asyncio.gather(*workers)
+        await hb_task
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print("\nInterrupted. Syncing cache and cleaning up...")
+        for w in workers:
+            w.cancel()
+        hb_task.cancel()
+        raise
 
     # Early-abort policy
     if batch_config.max_failures is not None and fc.count > batch_config.max_failures:
@@ -418,7 +429,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
     """
     OpenAI-compatible backend using stdlib urllib.
 
-    This intentionally stays dependency-light; advanced users can swap it out.
+    Dependency-light, provides caching, retries, error handling, etc.
     """
 
     def __init__(self, cfg: MinimaLlmConfig):
@@ -449,7 +460,9 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         # urllib has no session to close; keep for symmetry.
         self._closed = True
         if self._cache is not None:
+            print(f"Synchronizing cache at {self.cfg.cache_dir}.")
             self._cache.close()
+            print("Cache synched.")
 
     def _endpoint(self, path: str) -> str:
         # If base_url already ends in /v1, avoid duplicating /v1.
@@ -525,20 +538,29 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
 
         return await asyncio.to_thread(_do)
 
-    async def generate(self, req: MinimaLlmRequest) -> Result:
+    async def generate(self, req: MinimaLlmRequest, *, force_refresh: bool = False) -> Result:
         """
         Generate a response for the given request.
+
+        Parameters
+        ----------
+        req : MinimaLlmRequest
+            The request to process
+        force_refresh : bool
+            If True, bypass cache lookup and make a fresh LLM call.
+            The new response will still be written to cache.
 
         Returns MinimaLlmResponse on success, MinimaLlmFailure on error.
         Failures include full retry context: attempt count, timestamps, timeout.
         """
-        # Check cache first
+        # Check cache first (unless force_refresh)
         cache_key: Optional[str] = None
         if self._cache is not None:
             cache_key = self._make_cache_key(req)
-            cached = self._cache.get(cache_key)
-            if cached is not None:
-                return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1], cached=True)
+            if not force_refresh:
+                cached = self._cache.get(cache_key)
+                if cached is not None:
+                    return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1], cached=True)
 
         payload: Json = {
             "model": self.cfg.model,
