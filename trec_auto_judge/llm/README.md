@@ -55,6 +55,8 @@ export COMPRESS_GZIP=0                             # Enable gzip compression (de
 export CACHE_DIR="./cache"                         # Enable SQLite prompt cache (default: disabled)
 ```
 
+These environment variables can be read via `MinimaLlmConfig.from_env()`.
+
 ### Basic Usage
 
 ```python
@@ -295,6 +297,10 @@ config.max_failures         # Same as config.batch.max_failures
 ```
 
 **Note:** The actual field only exists in `BatchConfig`. The properties on `MinimaLlmConfig` are for backward compatibility.
+
+### Logging Configuration
+
+Use `config.describe()` to log active configuration.
 
 ## Advanced Features
 
