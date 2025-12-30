@@ -48,6 +48,7 @@ class MinimaLlmResponse:
     request_id: str
     text: str
     raw: Optional[Json] = None
+    cached: bool = False  # True if returned from prompt cache
 
 
 @runtime_checkable

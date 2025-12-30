@@ -246,9 +246,15 @@ class _Heartbeat:
         self._start = time.monotonic()
         self._last_done = self._start
         self._last_print = self._start
+        self._cached_count = 0
+        self._llm_count = 0
 
-    def mark_done(self) -> None:
+    def mark_done(self, *, cached: bool = False) -> None:
         self._last_done = time.monotonic()
+        if cached:
+            self._cached_count += 1
+        else:
+            self._llm_count += 1
 
     @staticmethod
     def _fmt_eta(seconds: float) -> str:
@@ -268,19 +274,26 @@ class _Heartbeat:
         if self._every_s > 0 and (now - self._last_print) >= self._every_s:
             elapsed = now - self._start
 
-            # ETA estimation
-            if done > 0 and elapsed > 0:
-                rate = done / elapsed  # items per second
-                remaining = max(0, total - done)
-                eta_s = remaining / rate if rate > 0 else float("inf")
+            # ETA estimation based on LLM calls only (not cache hits)
+            # Cache hits are instant, so including them skews the rate
+            llm_done = self._llm_count
+            remaining = max(0, total - done)
+
+            if llm_done > 0 and elapsed > 0:
+                llm_rate = llm_done / elapsed  # LLM items per second
+                # Remaining items need LLM calls (cache hits already counted)
+                eta_s = remaining / llm_rate if llm_rate > 0 else float("inf")
                 eta_str = self._fmt_eta(eta_s)
             else:
                 eta_str = "?"
 
+            # Show cache stats if any
+            cache_str = f" cached={self._cached_count}" if self._cached_count > 0 else ""
+
             print(
                 f"[{elapsed:7.1f}s] "
                 f"completed={done}/{total} "
-                f"failed={failed} "
+                f"failed={failed}{cache_str} "
                 f"eta={eta_str}"
             )
             self._last_print = now
@@ -293,29 +306,6 @@ class _Heartbeat:
             )
             self._last_done = now  # avoid spamming
 
-
-# class _Heartbeat:
-#     def __init__(self, *, interval_seconds: float, stall_timeout_seconds: float) -> None:
-#         self._every_s = float(interval_seconds)
-#         self._stall_s = float(stall_timeout_seconds)
-#         self._start = time.monotonic()
-#         self._last_done = self._start
-#         self._last_print = self._start
-
-#     def mark_done(self) -> None:
-#         self._last_done = time.monotonic()
-
-#     def maybe_print(self, *, done: int, total: int, failed: int) -> None:
-#         now = time.monotonic()
-#         if self._every_s > 0 and (now - self._last_print) >= self._every_s:
-#             elapsed = now - self._start           
-#             print(f"[{elapsed:7.1f}s] completed={done}/{total} failed={failed}")
-#             self._last_print = now
-
-#         if self._stall_s > 0 and (now - self._last_done) >= self._stall_s:
-#             elapsed = now - self._start
-#             print(f"[{elapsed:7.1f}s] WARNING: no completions for {now - self._last_done:.1f}s")
-#             self._last_done = now  # avoid spamming
 
 
 # ----------------------------
@@ -372,11 +362,15 @@ async def run_batched_callable(
             except asyncio.QueueEmpty:
                 return
 
+            cached = False
             try:
                 result = await async_callable(item)
                 # Check if result is a failure (generate() returns Result, not raises)
                 if isinstance(result, MinimaLlmFailure):
                     fc.record(result)
+                # Check if result was from cache (MinimaLlmResponse has cached attr)
+                elif hasattr(result, "cached"):
+                    cached = bool(result.cached)
                 results[i] = result
             except Exception as e:
                 # Fallback for non-LLM exceptions
@@ -389,7 +383,7 @@ async def run_batched_callable(
                 results[i] = f
                 fc.record(f)
 
-            hb.mark_done()
+            hb.mark_done(cached=cached)
             q.task_done()
 
     async def heartbeat_loop() -> None:
@@ -544,7 +538,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
             cache_key = self._make_cache_key(req)
             cached = self._cache.get(cache_key)
             if cached is not None:
-                return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1])
+                return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1], cached=True)
 
         payload: Json = {
             "model": self.cfg.model,
