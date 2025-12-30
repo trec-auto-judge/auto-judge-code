@@ -172,27 +172,36 @@ async def test_dspy_adapter_parse_error_retry():
     # Track state across calls
     call_count = 0
     force_refresh_on_retry = None
+    call_log = []  # Collect debug info for assertion message
 
     # Create backend
     backend = OpenAIMinimaLlm.from_env()
 
     async def mock_lm_acall(self, *args, **kwargs):
-        """Mock LM that tracks force_refresh and fails first call with unparseable response."""
         nonlocal call_count, force_refresh_on_retry
-
         call_count += 1
-
-        # Check force_refresh state on every call
         current_force_refresh = get_force_refresh()
 
         if call_count == 1:
-            # First call: return unparseable response (missing required fields)
-            return ["This response has no DSPy field markers so parsing will fail"]
+            response = ["This response has no DSPy field markers so parsing will fail"]
         else:
-            # Retry: capture force_refresh state
             force_refresh_on_retry = current_force_refresh
-            # Return properly formatted DSPy response (ChainOfThought needs reasoning + answer)
-            return ["[[ ## reasoning ## ]]\nBecause 2+2=4\n[[ ## answer ## ]]\n42"]
+            response = ["[[ ## reasoning ## ]]\nBecause 2+2=4\n[[ ## answer ## ]]\n42"]
+
+        # Capture messages to understand what DSPy is asking for
+        messages_summary = None
+        if 'messages' in kwargs and kwargs['messages']:
+            last_msg = kwargs['messages'][-1].get('content', '')[:100] if kwargs['messages'] else ''
+            messages_summary = f"msgs={len(kwargs['messages'])}, last={last_msg}..."
+
+        call_log.append({
+            "call": call_count,
+            "force_refresh": current_force_refresh,
+            "response": response[0][:80],
+            "messages": messages_summary,
+        })
+        return response
+
 
     # Patch at class level since run_dspy_batch creates its own LM instance
     with patch.object(MinimaLlmDSPyLM, 'acall', mock_lm_acall):
@@ -207,8 +216,8 @@ async def test_dspy_adapter_parse_error_retry():
         )
 
     # Verify retry happened and force_refresh was set
-    assert call_count == 2, f"Expected 2 LM calls (1 fail + 1 retry), got {call_count}"
-    assert force_refresh_on_retry is True, "force_refresh should be True on retry call"
+    assert call_count == 2, f"Expected 2 LM calls (1 fail + 1 retry), got {call_count}. Call log:\n{call_log}"
+    assert force_refresh_on_retry is True, f"force_refresh should be True on retry call. Call log:\n{call_log}"
 
     # Verify result was processed
     assert results[0].answer == "42"
