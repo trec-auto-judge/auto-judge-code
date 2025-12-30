@@ -375,6 +375,9 @@ export CACHE_DIR="./cache"
 - **Content-addressed**: Cache key is SHA-256 of (model, messages, temperature, max_tokens, extra)
 - **Automatic**: Transparent caching—same API, just set `cache_dir`
 
+
+See below for Cache Control on how to force refresh and retry on prompt parse errors.
+
 ## Error Handling
 
 ### The Result Type
@@ -442,6 +445,75 @@ except RuntimeError as e:
     # Recent failures are included in exception message
 ```
 
+### Cache Control via `force_refresh` and `cached` status value
+
+The generate() method accepts a force_refresh parameter to bypass cache lookup while still writing new responses to cache:
+
+Normal call - uses cache if available
+
+    response = await backend.generate(req)
+
+Force fresh LLM call - bypasses cache, writes new response
+      response = await backend.generate(req, force_refresh=True)
+
+This is useful when a cached response caused downstream errors and you need a fresh response.
+
+The cached Response Attribute
+
+MinimaLlmResponse includes a cached: bool attribute indicating whether the response came from cache:
+
+    response = await backend.generate(req)
+    if response.cached:
+        print("Response served from cache")
+    else:
+        print("Fresh LLM call made")
+
+The batch runner uses this to report accurate throughput statistics (distinguishing cache hits from actual LLM calls).
+
+Context Variables for Adapters
+
+When wrapping OpenAIMinimaLlm in adapters (e.g., for DSPy), you may not control the function signatures between your retry logic and the generate() call. Context variables provide an alternative way to propagate these values:
+
+    from trec_auto_judge.llm import (
+        set_force_refresh, reset_force_refresh, get_force_refresh,
+        set_last_cached, get_last_cached,
+    )
+
+Example: Retry on parse errors in run_dspy_batch()
+
+When DSPy fails to parse an LLM response (e.g., missing required fields), the cached response may be stale or malformed. The retry logic needs to signal cache bypass, but DSPy's predictor.acall() doesn't accept a force_refresh parameter:
+
+    async def process_with_retry(item):
+        for attempt in range(max_attempts):
+            # On retry, set contextvar to bypass cache
+            if attempt > 0:
+                token = set_force_refresh(True)
+            try:
+                result = await predictor.acall(**kwargs)  # No force_refresh param
+                return result
+            except AdapterParseError:
+                continue  # Retry with fresh response
+            finally:
+                if attempt > 0:
+                    reset_force_refresh(token)  # Always reset
+
+The DSPy adapter checks get_force_refresh() internally and passes it to generate():
+
+**Inside MinimaLlmDSPyLM.acall():**
+
+    force_refresh = force_refresh or get_force_refresh()
+    resp = await self._minimallm.generate(req, force_refresh=force_refresh)
+    set_last_cached(resp.cached)  # Preserve for heartbeat stats
+    return [resp.text]
+
+| Function                                | Description                                   |
+|-----------------------------------------|-----------------------------------------------|
+| set_force_refresh(force: bool) -> Token | Request cache bypass, returns reset token     |
+| get_force_refresh() -> bool             | Check if cache bypass requested               |
+| reset_force_refresh(token)              | Reset to previous state (call in finally)     |
+| set_last_cached(cached: bool)           | Record cache status after unwrapping response |
+| get_last_cached() -> bool               | Get cache status (used by heartbeat)          |
+
 ## Examples
 
 ### Complete Example: Question Answering
@@ -484,6 +556,8 @@ async def qa_batch():
 if __name__ == "__main__":
     asyncio.run(qa_batch())
 ```
+
+
 
 ### Complete Example: DSPy Integration
 
