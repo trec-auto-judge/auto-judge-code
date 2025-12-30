@@ -240,9 +240,10 @@ class _FailureCollector:
         return list(self._summaries)
 
 class _Heartbeat:
-    def __init__(self, *, interval_seconds: float, stall_timeout_seconds: float) -> None:
+    def __init__(self, *, interval_seconds: float, stall_timeout_seconds: float, num_workers: int = 0) -> None:
         self._every_s = float(interval_seconds)
         self._stall_s = float(stall_timeout_seconds)
+        self._num_workers = num_workers
         self._start = time.monotonic()
         self._last_done = self._start
         self._last_print = self._start
@@ -250,12 +251,23 @@ class _Heartbeat:
         self._llm_count = 0
         self.done = 0
 
+        # Per-interval LLM counters (excludes cache hits
+        self._interval_llm_sent = 0      # LLM requests sent this interval
+        self._interval_llm_received = 0  # LLM responses received this interval
+        # self._prev_llm_count = 0         # LLM count at last print (for interval calculation)
+
+    def mark_start(self, *, cached: bool = False) -> None:
+        """Mark that a request has been sent (only counts LLM calls, not cache hits)."""
+        if not cached:
+            self._interval_llm_sent += 1
+
     def mark_done(self, *, cached: bool = False) -> None:
         self._last_done = time.monotonic()
         if cached:
             self._cached_count += 1
             self.done += 1
         else:
+            self._interval_llm_received += 1
             self._llm_count += 1
             self.done += 1
 
@@ -271,20 +283,27 @@ class _Heartbeat:
             return f"{m:d}m{s:02d}s"
         return f"{s:d}s"
 
-    def maybe_print(self, *, total: int, failed: int) -> None:
+    def maybe_print(self, *, total: int, failed: int, queued: int = 0) -> None:
         now = time.monotonic()
 
         if self._every_s > 0 and (now - self._last_print) >= self._every_s:
+            interval_s = now - self._last_print
             elapsed = now - self._start
 
+            # Per-interval rates
+            sent_rate = self._interval_llm_sent / interval_s if interval_s > 0 else 0
+            recv_rate = self._interval_llm_received / interval_s if interval_s > 0 else 0
+
+            # Reset interval counters
+            self._interval_llm_sent = 0
+            self._interval_llm_received = 0
+
             # ETA estimation based on LLM calls only (not cache hits)
-            # Cache hits are instant, so including them skews the rate
             llm_done = self._llm_count
             remaining = max(0, total - self.done)
 
             if llm_done > 0 and elapsed > 0:
-                llm_rate = llm_done / elapsed  # LLM items per second
-                # Remaining items need LLM calls (cache hits already counted)
+                llm_rate = llm_done / elapsed  # Overall LLM rate
                 eta_s = remaining / llm_rate if llm_rate > 0 else float("inf")
                 eta_str = self._fmt_eta(eta_s)
             else:
@@ -292,10 +311,10 @@ class _Heartbeat:
 
             print(
                 f"[{elapsed:7.1f}s] "
-                f"completed={self.done}/{total} "
+                f"done={self.done}/{total} "
+                f"sent={sent_rate:.1f}/s recv={recv_rate:.1f}/s "
                 f"cached={self._cached_count} "
                 f"failed={failed} "
-                f"remaining={remaining} "
                 f"eta={eta_str}"
             )
             self._last_print = now
@@ -343,8 +362,13 @@ async def run_batched_callable(
     
     if batch_config is None:
         batch_config=BatchConfig.from_env()
-    
-    hb = _Heartbeat(interval_seconds=batch_config.heartbeat_s, stall_timeout_seconds=batch_config.stall_s)
+
+    num_workers = max(1, int(batch_config.num_workers))
+    hb = _Heartbeat(
+        interval_seconds=batch_config.heartbeat_s,
+        stall_timeout_seconds=batch_config.stall_s,
+        num_workers=num_workers,
+    )
     fc = _FailureCollector(
         print_first_n=batch_config.print_first_failures,
         keep_last_n=batch_config.keep_failure_summaries,
@@ -364,6 +388,7 @@ async def run_batched_callable(
             except asyncio.QueueEmpty:
                 return
 
+            hb.mark_start()
             cached = False
             try:
                 result = await async_callable(item)
