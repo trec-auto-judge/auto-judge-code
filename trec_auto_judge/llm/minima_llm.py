@@ -385,6 +385,7 @@ async def run_batched_callable(
         print_first_n=batch_config.print_first_failures,
         keep_last_n=batch_config.keep_failure_summaries,
     )
+    abort_event = asyncio.Event()  # Shared flag for early abort
 
     total = len(items)
     results: List[Optional[Union[R, MinimaLlmFailure]]] = [None] * total
@@ -395,6 +396,10 @@ async def run_batched_callable(
 
     async def worker() -> None:
         while True:
+            # Check for early abort before taking next item
+            if abort_event.is_set():
+                return
+
             try:
                 i, item = q.get_nowait()
             except asyncio.QueueEmpty:
@@ -412,7 +417,7 @@ async def run_batched_callable(
                 # Check if result was from cache (MinimaLlmResponse has cached attr)
                 else:
                     # Get cached status. Since the DSPy adapter unwraps the MinimaLlmRespone object, and drops the cached flag, we use a context var as a fall-back
-                    cached = bool(getattr(result, "cached", False)) or get_last_cached() 
+                    cached = bool(getattr(result, "cached", False)) or get_last_cached()
                 results[i] = result
             except Exception as e:
                 # Code errors (NameError, TypeError, etc.) propagate immediately
@@ -431,10 +436,15 @@ async def run_batched_callable(
             hb.mark_done(cached=cached)
             q.task_done()
 
+            # Check if we should trigger early abort after recording failure
+            if batch_config.max_failures is not None and fc.count > batch_config.max_failures:
+                abort_event.set()
+                return
+
     async def heartbeat_loop() -> None:
         while True:
             hb.maybe_print(total=total, failed=fc.count)
-            if hb.done >= total:
+            if hb.done >= total or abort_event.is_set():
                 return
             await asyncio.sleep(hb._every_s)
 
@@ -443,16 +453,21 @@ async def run_batched_callable(
 
     try:
         await asyncio.gather(*workers)
-        await hb_task
     except (KeyboardInterrupt, asyncio.CancelledError):
         print("\nInterrupted. Syncing cache and cleaning up...")
         for w in workers:
             w.cancel()
-        hb_task.cancel()
         raise
+    finally:
+        # Always cancel heartbeat cleanly after workers finish
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
 
-    # Early-abort policy
-    if batch_config.max_failures is not None and fc.count > batch_config.max_failures:
+    # Early-abort policy (raised after cleanup)
+    if abort_event.is_set():
         lines = fc.summary_lines()
         tail = "\n".join(f"  - {s}" for s in lines)
         raise RuntimeError(f"Aborting batch: {fc.count} failures\nRecent failures:\n{tail}")
