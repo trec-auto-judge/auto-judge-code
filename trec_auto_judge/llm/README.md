@@ -125,9 +125,25 @@ asyncio.run(main())
 - Progress heartbeat and stall detection
 - Early abort on max failures
 
+**Diagnostics**
+
+Diagnostics include progress, LLM-endpoint send/receive rate, cache hits, tracked failured prompts, and ETA.
+
+```
+[   10.0s] done=34/100 sent=5.0/s recv=3.4/s cached=0 failed=0 eta=19s
+[   20.0s] done=74/100 sent=4.0/s recv=4.0/s cached=0 failed=0 eta=7s
+Failure 1: q20
+    HTTPError: status=502
+    attempts=6, timeout=1200.0s [+0.0s, +1.5s, +2.9s, +5.1s, +9.7s, +18.2s]
+[   30.0s] done=99/100 sent=1.0/s recv=2.5/s cached=0 failed=1 eta=0s
+[   40.0s] done=100/100 sent=0.0/s recv=0.1/s cached=0 failed=1 eta=0s
+```
+
+Many failures are automatically retried until retries are exceeded. The diagnostic lists the times at which time repeated failures occurred.
+
 ### Generic Batch Runner
 
-For batch processing with custom async functions:
+The batch runner can also be used with any  custom async function. This can be helpful when libraries need to be sandwiched between LLM-backend and the batch runner (e.g. for DSPy).
 
 ```python
 import asyncio
