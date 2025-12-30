@@ -256,16 +256,16 @@ class _Heartbeat:
         self._interval_llm_received = 0  # LLM responses received this interval
         # self._prev_llm_count = 0         # LLM count at last print (for interval calculation)
 
-    def mark_start(self, *, cached: bool = False) -> None:
+    def mark_start(self) -> None:
         """Mark that a request has been sent (only counts LLM calls, not cache hits)."""
-        if not cached:
-            self._interval_llm_sent += 1
+        self._interval_llm_sent += 1
 
     def mark_done(self, *, cached: bool = False) -> None:
         self._last_done = time.monotonic()
         if cached:
             self._cached_count += 1
             self.done += 1
+            self._interval_llm_sent -= 1 # because it was cached, it wasn't really sent -- but we did not know that in `mark_start`.
         else:
             self._interval_llm_received += 1
             self._llm_count += 1
@@ -388,7 +388,7 @@ async def run_batched_callable(
             except asyncio.QueueEmpty:
                 return
 
-            hb.mark_start()
+            hb.mark_start()  # We don't know yet if this was cached, makes the count wrong.
             cached = False
             try:
                 result = await async_callable(item)
@@ -396,8 +396,10 @@ async def run_batched_callable(
                 if isinstance(result, MinimaLlmFailure):
                     fc.record(result)
                 # Check if result was from cache (MinimaLlmResponse has cached attr)
-                elif hasattr(result, "cached"):
-                    cached = bool(result.cached)
+                else:
+                    # The problem is that DSPy adapter unwraps the MinimaLlmRespone object, and that's where we drop the cached flag.
+                    # cached = result.cached  
+                    cached = bool(getattr(result, "cached", False))
                 results[i] = result
             except Exception as e:
                 # Code errors (NameError, TypeError, etc.) propagate immediately

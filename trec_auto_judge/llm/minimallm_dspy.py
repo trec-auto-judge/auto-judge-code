@@ -260,7 +260,7 @@ class MinimaLlmDSPyLM(_BaseLM):  # type: ignore[misc]
         resp = await self._minimallm.generate(req, force_refresh=force_refresh)
         if isinstance(resp, MinimaLlmFailure):
             raise RuntimeError(f"{resp.error_type}: {resp.message}")
-        return [resp.text]
+        return [resp.text]   # this is where we lose the "cached" attribute
 
     # Some DSPy internals/adapters call forward/aforward.
     async def aforward(self, *args: Any, **kwargs: Any) -> List[str]:
