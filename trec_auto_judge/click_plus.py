@@ -2,7 +2,8 @@ from pathlib import Path
 from typing import Optional
 from .io import load_runs_failsave
 from .request import load_requests_from_irds, load_requests_from_file
-from .llm import MinimaLlmConfig, ModelPreferences, ModelResolver, ModelResolutionError
+from .llm import MinimaLlmConfig
+from .llm_resolver import ModelPreferences, ModelResolver, ModelResolutionError
 import click
 from . import AutoJudge
 

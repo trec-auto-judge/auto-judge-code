@@ -5,16 +5,10 @@ These tests verify the model resolution logic without making real LLM calls.
 """
 
 import pytest
-from pathlib import Path
 from textwrap import dedent
 
-from trec_auto_judge.llm import (
-    MinimaLlmConfig,
-    ModelPreferences,
-    AvailableModels,
-    ModelResolver,
-    ModelResolutionError,
-)
+from trec_auto_judge.llm import MinimaLlmConfig
+from trec_auto_judge.llm_resolver import (ModelPreferences, AvailableModels,  ModelResolver, ModelResolutionError)
 
 
 class TestModelPreferences:
@@ -71,21 +65,20 @@ class TestAvailableModels:
 
     def test_from_yaml(self, tmp_path):
         config_file = tmp_path / "available_models.yml"
-        config_file.write_text(dedent("""
+        config_file.write_text(dedent("""\
             models:
-            gpt-4o:
+              gpt-4o:
                 base_url: "https://api.openai.com/v1"
                 model_id: "gpt-4o-2024-08-06"
                 api_key_env: "OPENAI_API_KEY"
                 enabled: true
-            disabled-model:
+              disabled-model:
                 base_url: "https://api.example.com/v1"
                 model_id: "disabled"
                 enabled: false
-
             default_model: "gpt-4o"
             aliases:
-            gpt4: "gpt-4o"
+              gpt4: "gpt-4o"
             """))
 
         available = AvailableModels.from_yaml(config_file)
@@ -222,25 +215,24 @@ class TestIntegration:
         """Test complete flow: YAML -> preferences -> resolution -> config."""
         # Create available models config
         available_file = tmp_path / "available_models.yml"
-        available_file.write_text(dedent("""
+        available_file.write_text(dedent("""\
             models:
-            gpt-4o:
+              gpt-4o:
                 base_url: "https://api.openai.com/v1"
                 model_id: "gpt-4o-2024-08-06"
-            claude-3-sonnet:
+              claude-3-sonnet:
                 base_url: "https://api.anthropic.com/v1"
                 model_id: "claude-3-sonnet-20240229"
-
             default_model: "gpt-4o"
             """))
         monkeypatch.setenv("AUTOJUDGE_AVAILABLE_MODELS", str(available_file))
 
         # Create participant's llm-config.yml
         llm_config = tmp_path / "llm-config.yml"
-        llm_config.write_text(dedent("""
+        llm_config.write_text(dedent("""\
             model_preferences:
-            - "claude-3-sonnet"
-            - "gpt-4o"
+              - "claude-3-sonnet"
+              - "gpt-4o"
             """))
 
         # Load and resolve

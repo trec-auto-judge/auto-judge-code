@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Sequence
 
 import yaml
 
-from .llm_config import MinimaLlmConfig, BatchConfig, _env_str
+from ..llm.llm_config import MinimaLlmConfig, BatchConfig, _env_str
 
 
 class ModelResolutionError(Exception):
