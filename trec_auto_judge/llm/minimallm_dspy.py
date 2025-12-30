@@ -118,6 +118,8 @@ class MinimaLlmDSPyLM(_BaseLM):  # type: ignore[misc]
         )
 
         resp = await self._minimallm.generate(req)
+        if isinstance(resp, MinimaLlmFailure):
+            raise RuntimeError(f"{resp.error_type}: {resp.message}")
         return [resp.text]
 
     # Some DSPy internals/adapters call forward/aforward.
