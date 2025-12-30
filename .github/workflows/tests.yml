@@ -26,5 +26,9 @@ jobs:
           pip3 install --no-deps ir_datasets
       - name: Run unit tests
         working-directory: ${{github.workspace}}/
+        env:
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python3 -m pytest --cov-report term --cov=trec_auto_judge tests
