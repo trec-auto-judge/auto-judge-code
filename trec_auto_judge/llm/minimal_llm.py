@@ -45,6 +45,16 @@ class MinimaLlmFailure:
     attempts: int
     status: Optional[int] = None
     body_snippet: Optional[str] = None
+    timeout_s: Optional[float] = None
+    attempt_timestamps: Tuple[float, ...] = ()
+
+    def format_attempts(self) -> str:
+        """Format attempt timestamps relative to first attempt."""
+        if not self.attempt_timestamps:
+            return ""
+        t0 = self.attempt_timestamps[0]
+        times = [f"+{t - t0:.1f}s" for t in self.attempt_timestamps]
+        return f"[{', '.join(times)}]"
 
 
 Result = Union[MinimaLlmResponse, MinimaLlmFailure]
@@ -207,11 +217,16 @@ class _FailureCollector:
 
     def record(self, f: MinimaLlmFailure) -> None:
         self._seen += 1
-        msg = f"{f.request_id}: {f.error_type}: {f.message}"
+        # Include attempts and timeout in summary
+        timeout_info = f", timeout={f.timeout_s}s" if f.timeout_s else ""
+        msg = f"{f.request_id}: {f.error_type}: {f.message} (attempts={f.attempts}{timeout_info})"
         if self._seen <= self._print_first:
-            print(f"Failure {self._seen} on request_id={f.request_id}\n    {f.error_type}: {f.message}")
+            ts = f.format_attempts()
+            print(f"Failure {self._seen}: {f.request_id}")
+            print(f"    {f.error_type}: {f.message}")
+            print(f"    attempts={f.attempts}, timeout={f.timeout_s}s {ts}")
             if f.body_snippet:
-                print(f"    body={f.body_snippet}")
+                print(f"    body={f.body_snippet[:100]}")
         if self._keep > 0:
             self._summaries.append(msg)
             if len(self._summaries) > self._keep:
@@ -359,8 +374,12 @@ async def run_batched_callable(
 
             try:
                 result = await async_callable(item)
+                # Check if result is a failure (generate() returns Result, not raises)
+                if isinstance(result, MinimaLlmFailure):
+                    fc.record(result)
                 results[i] = result
             except Exception as e:
+                # Fallback for non-LLM exceptions
                 f = MinimaLlmFailure(
                     request_id=f"input-{i}",
                     error_type=type(e).__name__,
@@ -512,7 +531,13 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
 
         return await asyncio.to_thread(_do)
 
-    async def generate(self, req: MinimaLlmRequest) -> MinimaLlmResponse:
+    async def generate(self, req: MinimaLlmRequest) -> Result:
+        """
+        Generate a response for the given request.
+
+        Returns MinimaLlmResponse on success, MinimaLlmFailure on error.
+        Failures include full retry context: attempt count, timestamps, timeout.
+        """
         # Check cache first
         cache_key: Optional[str] = None
         if self._cache is not None:
@@ -535,6 +560,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         url = self._endpoint("/v1/chat/completions")
 
         attempt = 0
+        attempt_timestamps: List[float] = []
         last_body: Optional[str] = None
 
         while True:
@@ -543,6 +569,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
             await self._rpm.wait_turn()
 
             async with self._sem:
+                attempt_timestamps.append(time.monotonic())  # Record send time
                 status, headers, raw = await self._post_json(url, payload)
 
             body_text = raw.decode("utf-8", errors="replace")
@@ -552,18 +579,30 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                 try:
                     data = json.loads(body_text)
                 except Exception as e:
-                    raise RuntimeError(
-                        f"OpenAI-compat POST /v1/chat/completions returned non-JSON: {e}; "
-                        f"status={status}; body={last_body}"
-                    ) from e
+                    return MinimaLlmFailure(
+                        request_id=req.request_id,
+                        error_type="JSONDecodeError",
+                        message=f"non-JSON response: {e}",
+                        attempts=attempt,
+                        status=status,
+                        body_snippet=last_body,
+                        timeout_s=self.cfg.timeout_s,
+                        attempt_timestamps=tuple(attempt_timestamps),
+                    )
 
                 try:
                     text = data["choices"][0]["message"]["content"]
                 except Exception as e:
-                    raise RuntimeError(
-                        f"OpenAI-compat response missing expected fields: {e}; "
-                        f"status={status}; body={last_body}"
-                    ) from e
+                    return MinimaLlmFailure(
+                        request_id=req.request_id,
+                        error_type="MalformedResponse",
+                        message=f"missing expected fields: {e}",
+                        attempts=attempt,
+                        status=status,
+                        body_snippet=last_body,
+                        timeout_s=self.cfg.timeout_s,
+                        attempt_timestamps=tuple(attempt_timestamps),
+                    )
 
                 # Store in cache on success
                 if self._cache is not None and cache_key is not None:
@@ -579,9 +618,16 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                 await self._cooldown.bump(retry_after or self.cfg.cooldown_floor_s or 1.0)
 
             if attempt >= self.cfg.max_attempts or not _is_retriable_status(status):
-                raise RuntimeError(
-                    f"OpenAI-compat POST /v1/chat/completions failed: "
-                    f"status={status}, attempts={attempt}, body={last_body}"
+                error_type = "TimeoutError" if status == 408 else "HTTPError"
+                return MinimaLlmFailure(
+                    request_id=req.request_id,
+                    error_type=error_type,
+                    message=f"status={status}",
+                    attempts=attempt,
+                    status=status,
+                    body_snippet=last_body,
+                    timeout_s=self.cfg.timeout_s,
+                    attempt_timestamps=tuple(attempt_timestamps),
                 )
 
             # Honor Retry-After if provided; otherwise use exponential backoff
@@ -591,7 +637,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                 backoff = min(self.cfg.max_backoff_s, self.cfg.base_backoff_s * (2 ** (attempt - 1)))
                 await asyncio.sleep(_jittered(backoff, self.cfg.jitter))
 
-    async def prompt_one(self, req: MinimaLlmRequest) -> MinimaLlmResponse:
+    async def prompt_one(self, req: MinimaLlmRequest) -> Result:
         """Backwards-compatible alias for generate()."""
         return await self.generate(req)
 
