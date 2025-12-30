@@ -170,7 +170,8 @@ async def test_dspy_adapter_parse_error_retry():
         obj.answer = pred.answer
 
     # Track state across calls
-    call_count = 0
+    call_count = 0  # Our actual attempts (excludes DSPy internal JSON fallback)
+    json_fallback_count = 0  # DSPy's internal JSON format retry
     force_refresh_on_retry = None
     call_log = []  # Collect debug info for assertion message
 
@@ -178,27 +179,36 @@ async def test_dspy_adapter_parse_error_retry():
     backend = OpenAIMinimaLlm.from_env()
 
     async def mock_lm_acall(self, *args, **kwargs):
-        nonlocal call_count, force_refresh_on_retry
-        call_count += 1
+        nonlocal call_count, json_fallback_count, force_refresh_on_retry
         current_force_refresh = get_force_refresh()
 
-        if call_count == 1:
-            response = ["This response has no DSPy field markers so parsing will fail"]
-        else:
-            force_refresh_on_retry = current_force_refresh
-            response = ["[[ ## reasoning ## ]]\nBecause 2+2=4\n[[ ## answer ## ]]\n42"]
+        # Check if this is DSPy's JSON format fallback (internal retry, not ours)
+        messages = kwargs.get('messages', [])
+        last_content = messages[-1].get('content', '') if messages else ''
+        is_json_fallback = 'JSON object' in last_content
 
-        # Capture messages to understand what DSPy is asking for
-        messages_summary = None
-        if 'messages' in kwargs and kwargs['messages']:
-            last_msg = kwargs['messages'][-1].get('content', '')[:100] if kwargs['messages'] else ''
-            messages_summary = f"msgs={len(kwargs['messages'])}, last={last_msg}..."
+        if is_json_fallback:  # DSPy may automatically fall back onto JSON when parsing fails. Let's catch this and toss it.
+            json_fallback_count += 1
+            if json_fallback_count == 1:
+                # First JSON fallback also fails - forces DSPy to raise AdapterParseError to us
+                response = ['{"not_valid": "missing required fields"}']
+            else:
+                # Subsequent JSON fallbacks succeed
+                response = ['{"reasoning": "Because 2+2=4", "answer": "42"}']
+        else:
+            call_count += 1
+            if call_count == 1:
+                response = ["This response has no DSPy field markers so parsing will fail"]
+            else:
+                force_refresh_on_retry = current_force_refresh
+                response = ["[[ ## reasoning ## ]]\nBecause 2+2=4\n[[ ## answer ## ]]\n42"]
 
         call_log.append({
             "call": call_count,
+            "json_fallback": json_fallback_count,
+            "is_json": is_json_fallback,
             "force_refresh": current_force_refresh,
             "response": response[0][:80],
-            "messages": messages_summary,
         })
         return response
 
