@@ -371,16 +371,14 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         resolved_config = _resolve_llm_config(llm_config)
 
         created_nuggets = auto_judge.create_nuggets(
-            rag_topics, resolved_config, nugget_banks=nugget_banks
+            rag_topics=rag_topics, resolved_config=resolved_config, nugget_banks=nugget_banks, llm_config=llm_config
         )
 
         if created_nuggets is None:
-            raise click.ClickException(
-                "This judge does not support nugget creation (create_nuggets returned None)"
-            )
-
-        write_nugget_banks(created_nuggets, store_nuggets)
-        click.echo(f"Nuggets written to {store_nuggets}", err=True)
+            click.echo("Warning: Judge doesn't create nuggets (create_nuggets returned None)", err=True)
+        else:
+            write_nugget_banks(created_nuggets, store_nuggets)
+            click.echo(f"Nuggets written to {store_nuggets}", err=True)
 
     @cli.command("nuggify-and-judge")
     @option_rag_responses()
@@ -413,9 +411,12 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         )
 
         # Store nuggets if requested and available
-        if store_nuggets and created_nuggets is not None:
-            write_nugget_banks(created_nuggets, store_nuggets)
-            click.echo(f"Nuggets written to {store_nuggets}", err=True)
+        if store_nuggets:
+            if created_nuggets is not None:
+                write_nugget_banks(created_nuggets, store_nuggets)
+                click.echo(f"Nuggets written to {store_nuggets}", err=True)
+            else:
+                click.echo("Warning: --store-nuggets ignored (judge doesn't create nuggets)", err=True)
 
         topic_ids = {t.request_id for t in rag_topics}
         verify_leaderboard_topics(

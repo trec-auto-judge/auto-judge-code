@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from trec_auto_judge import *
+from trec_auto_judge.nugget_data.nugget_data import *
 
 import dspy
 from textwrap import dedent
@@ -140,6 +141,17 @@ class UmbrelaJudge(AutoJudge):
         nugget_banks: Optional["NuggetBanks"] = None,
         **kwargs
     ) -> Optional["NuggetBanks"]:
+        # Naive nugget bank for testing
+        # banks = list()
+        # for topic in rag_topics:
+        #     topic_str = topic.problem_statement
+        #     bank = NuggetBank(query_id = topic.request_id, title_query=topic_str)
+        #     bank.add_nuggets(
+        #         [NuggetQuestion.from_lazy(topic.request_id, f"Is this relevant for: {topic_str}?", None)]
+        #     )
+        #     bank.index_nuggets()
+        #     banks.append(bank)
+        # return NuggetBanks.from_banks_list(banks=banks)
         return None
 
             
