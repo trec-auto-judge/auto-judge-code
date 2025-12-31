@@ -49,8 +49,8 @@ judge.judge(rag_responses, rag_topics, llm_config)
 3. Check if resolved name exists in organizer's enabled models
 4. Return first match as `MinimaLlmConfig`
 5. If no match:
+   - `on_no_match: "use_default"` (default) → Use organizer's `default_model`
    - `on_no_match: "error"` → Raise `ModelResolutionError`
-   - `on_no_match: "use_default"` → Use organizer's `default_model`
 
 ## Quick Start
 
@@ -137,8 +137,8 @@ When a participant's `llm-config.yml` is processed:
 2. Aliases are resolved to canonical names
 3. First matching model is used
 4. If no match:
+   - `on_no_match: "use_default"` (default) → Uses `default_model`
    - `on_no_match: "error"` → Raises `ModelResolutionError`
-   - `on_no_match: "use_default"` → Uses `default_model`
 
 ## Example: Multi-Provider Setup
 
@@ -181,7 +181,20 @@ aliases:
 
 ## Debugging
 
-List available models programmatically:
+### CLI
+
+```bash
+# List available models from current config
+trec-auto-judge list-models
+
+# List from specific config file
+trec-auto-judge list-models --config /path/to/available_models.yml
+
+# Test resolution against a participant's config
+trec-auto-judge list-models --resolve participant/llm-config.yml
+```
+
+### Programmatic
 
 ```python
 from trec_auto_judge.llm_resolver import AvailableModels

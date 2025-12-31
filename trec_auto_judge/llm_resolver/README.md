@@ -120,13 +120,25 @@ my-judge/
 └── Dockerfile
 ```
 
+## Debugging
+
+Use the CLI to check available models and test resolution:
+
+```bash
+# List available models
+trec-auto-judge list-models
+
+# Test resolution against your config
+trec-auto-judge list-models --resolve llm-config.yml
+```
+
 ## Troubleshooting
 
 ### "No model available from preferences"
 
 Your preferred models are not in the available pool. Either:
 1. Add more fallback options to your `model_preferences` list
-2. Set `on_no_match: "use_default"` to accept the organizer's default
+2. Remove `on_no_match: "error"` to use organizer's default (the default behavior)
 3. Check the error message for the list of available models
 
 ### Config not being read
