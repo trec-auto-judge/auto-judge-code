@@ -141,6 +141,7 @@ class UmbrelaJudge(AutoJudge):
         **kwargs
     ) -> Optional["NuggetBanks"]:
         return None
+
             
     def judge(
         self,

@@ -268,29 +268,75 @@ def _resolve_llm_config(llm_config_path: Optional[Path]) -> MinimaLlmConfig:
     return MinimaLlmConfig.from_env()
 
 
-def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str) -> int:
+class DefaultGroup(click.Group):
+    """Click group that invokes a default subcommand when none is specified."""
+
+    def __init__(self, *args, default_cmd_name: Optional[str] = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_cmd_name = default_cmd_name
+
+    def parse_args(self, ctx, args):
+        # Show group help if --help is passed without subcommand
+        if '--help' in args or '-h' in args:
+            return super().parse_args(ctx, args)
+        # If no args or first arg looks like an option, prepend default command
+        if self.default_cmd_name and (not args or args[0].startswith('-')):
+            args = [self.default_cmd_name] + list(args)
+        return super().parse_args(ctx, args)
+
+    def format_help(self, ctx, formatter):
+        """Format help to include default command options."""
+        super().format_help(ctx, formatter)
+
+        # Append default command's options
+        if self.default_cmd_name and self.default_cmd_name in self.commands:
+            default_cmd = self.commands[self.default_cmd_name]
+            formatter.write_paragraph()
+            formatter.write_text(
+                f"Default command: {self.default_cmd_name}"
+            )
+            formatter.write_paragraph()
+
+            # Get default command's options
+            with formatter.section("Default command options"):
+                default_cmd.format_options(ctx, formatter)
+
+
+def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
+    """
+    Create a Click command group for an AutoJudge with subcommands:
+    - nuggify: Create nugget banks only
+    - judge: Judge with existing nugget banks
+    - nuggify-and-judge: Create nuggets then judge (DEFAULT)
+
+    For backwards compatibility, invoking without a subcommand runs nuggify-and-judge.
+    """
     from .qrels.qrels import write_qrel_file, verify_qrels
     from .leaderboard.leaderboard import verify_leaderboard_topics
-    from .nugget_data.nugget_banks import NuggetBanks
+    from .nugget_data.nugget_banks import NuggetBanks, write_nugget_banks
     from .request import Request
     from .report import Report
-
     from typing import Iterable
 
-    @click.command(cmd_name)
+    @click.group(cmd_name, cls=DefaultGroup, default_cmd_name="nuggify-and-judge")
+    def cli():
+        """AutoJudge command group."""
+        pass
+
+    @cli.command("judge")
     @option_rag_responses()
     @option_rag_topics()
     @option_nugget_banks()
     @option_llm_config()
-    @click.option("--output", type=Path, help="The output file.", required=True)
-    def run(
+    @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
+    def judge_cmd(
         rag_topics: Iterable[Request],
         rag_responses: Iterable[Report],
         nugget_banks: Optional[NuggetBanks],
         llm_config: Optional[Path],
         output: Path
     ):
-        # Resolve LLM config from file or environment
+        """Judge RAG responses using existing nugget banks."""
         resolved_config = _resolve_llm_config(llm_config)
 
         leaderboard, qrels = auto_judge.judge(
@@ -298,7 +344,8 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str) -> int:
         )
 
         topic_ids = {t.request_id for t in rag_topics}
-        verify_leaderboard_topics(expected_topic_ids=topic_ids,
+        verify_leaderboard_topics(
+            expected_topic_ids=topic_ids,
             entries=leaderboard.entries,
             include_all_row=True,
             require_no_extras=True
@@ -306,10 +353,81 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str) -> int:
         leaderboard.write(output)
 
         if qrels is not None:
-            verify_qrels(qrels=qrels
-                         , expected_topic_ids=topic_ids
-                         , require_no_extras=True)
+            verify_qrels(qrels=qrels, expected_topic_ids=topic_ids, require_no_extras=True)
             write_qrel_file(qrel_out_file=output.with_suffix(".qrels"), qrels=qrels)
-        return 0
 
-    return run
+    @cli.command("nuggify")
+    @option_rag_topics()
+    @option_nugget_banks()
+    @option_llm_config()
+    @click.option("--store-nuggets", type=Path, help="Output nuggets file.", required=True)
+    def nuggify_cmd(
+        rag_topics: Iterable[Request],
+        nugget_banks: Optional[NuggetBanks],
+        llm_config: Optional[Path],
+        store_nuggets: Path
+    ):
+        """Create nugget banks from topics (optionally refining existing nuggets)."""
+        resolved_config = _resolve_llm_config(llm_config)
+
+        created_nuggets = auto_judge.create_nuggets(
+            rag_topics, resolved_config, nugget_banks=nugget_banks
+        )
+
+        if created_nuggets is None:
+            raise click.ClickException(
+                "This judge does not support nugget creation (create_nuggets returned None)"
+            )
+
+        write_nugget_banks(created_nuggets, store_nuggets)
+        click.echo(f"Nuggets written to {store_nuggets}", err=True)
+
+    @cli.command("nuggify-and-judge")
+    @option_rag_responses()
+    @option_rag_topics()
+    @option_nugget_banks()
+    @option_llm_config()
+    @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
+    @click.option("--store-nuggets", type=Path, help="Optional: store created nuggets.", required=False)
+    def nuggify_and_judge_cmd(
+        rag_topics: Iterable[Request],
+        rag_responses: Iterable[Report],
+        nugget_banks: Optional[NuggetBanks],
+        llm_config: Optional[Path],
+        output: Path,
+        store_nuggets: Optional[Path]
+    ):
+        """Create nuggets, then judge RAG responses (default command)."""
+        resolved_config = _resolve_llm_config(llm_config)
+
+        # Create nuggets (optionally refining existing)
+        created_nuggets = auto_judge.create_nuggets(
+            rag_topics, resolved_config, nugget_banks=nugget_banks
+        )
+
+        # Use created nuggets for judging, or fall back to input nuggets
+        nuggets_for_judging = created_nuggets if created_nuggets is not None else nugget_banks
+
+        leaderboard, qrels = auto_judge.judge(
+            rag_responses, rag_topics, resolved_config, nugget_banks=nuggets_for_judging
+        )
+
+        # Store nuggets if requested and available
+        if store_nuggets and created_nuggets is not None:
+            write_nugget_banks(created_nuggets, store_nuggets)
+            click.echo(f"Nuggets written to {store_nuggets}", err=True)
+
+        topic_ids = {t.request_id for t in rag_topics}
+        verify_leaderboard_topics(
+            expected_topic_ids=topic_ids,
+            entries=leaderboard.entries,
+            include_all_row=True,
+            require_no_extras=True
+        )
+        leaderboard.write(output)
+
+        if qrels is not None:
+            verify_qrels(qrels=qrels, expected_topic_ids=topic_ids, require_no_extras=True)
+            write_qrel_file(qrel_out_file=output.with_suffix(".qrels"), qrels=qrels)
+
+    return cli
