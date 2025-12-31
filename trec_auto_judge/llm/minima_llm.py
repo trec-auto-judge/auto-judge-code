@@ -93,16 +93,27 @@ def _jittered(base: float, jitter: float) -> float:
 # ----------------------------
 
 class RpmGate:
+    """Simple RPM limiter with lazy per-loop lock initialization."""
+
     def __init__(self, rpm: int):
         self._rpm = rpm
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
+        self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
         self._next_ok = 0.0
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        """Get or create lock for current event loop."""
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._bound_loop is not loop:
+            self._lock = asyncio.Lock()
+            self._bound_loop = loop
+        return self._lock
 
     async def wait_turn(self) -> None:
         if self._rpm <= 0:
             return
         spacing = 60.0 / float(self._rpm)
-        async with self._lock:
+        async with self._ensure_lock():
             now = time.monotonic()
             if now < self._next_ok:
                 await asyncio.sleep(self._next_ok - now)
@@ -115,14 +126,25 @@ class RpmGate:
 # ----------------------------
 
 class Cooldown:
+    """Cooldown gate with lazy per-loop lock initialization."""
+
     def __init__(self, floor_s: float, cap_s: float, halflife_s: float):
         self._floor = max(0.0, floor_s)
         self._cap = max(self._floor, cap_s)
         self._halflife = max(1e-6, halflife_s)
 
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None
+        self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
         self._cooldown_s = 0.0
         self._last = time.monotonic()
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        """Get or create lock for current event loop."""
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._bound_loop is not loop:
+            self._lock = asyncio.Lock()
+            self._bound_loop = loop
+        return self._lock
 
     def _decay(self) -> None:
         now = time.monotonic()
@@ -137,14 +159,14 @@ class Cooldown:
             self._cooldown_s = 0.0
 
     async def wait_if_needed(self) -> None:
-        async with self._lock:
+        async with self._ensure_lock():
             self._decay()
             cd = self._cooldown_s
         if cd > 0.0:
             await asyncio.sleep(cd)
 
     async def bump(self, suggested_s: float) -> None:
-        async with self._lock:
+        async with self._ensure_lock():
             self._decay()
             new_cd = max(self._floor, suggested_s)
             self._cooldown_s = min(self._cap, max(self._cooldown_s, new_cd))
@@ -485,26 +507,56 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
     OpenAI-compatible backend using stdlib urllib.
 
     Dependency-light, provides caching, retries, error handling, etc.
+
+    This backend supports being reused across multiple asyncio.run() calls.
+    Async primitives (semaphore, locks) are lazily created per event loop.
+    The cache database is automatically reopened if previously closed.
     """
 
     def __init__(self, cfg: MinimaLlmConfig):
         self.cfg = cfg
 
-        self._sem = asyncio.Semaphore(cfg.max_outstanding)
-        self._rpm = RpmGate(cfg.rpm)
-        self._cooldown = Cooldown(cfg.cooldown_floor_s, cfg.cooldown_cap_s, cfg.cooldown_halflife_s)
+        # Lazy-init async primitives (created per event loop)
+        self._sem: Optional[asyncio.Semaphore] = None
+        self._rpm: Optional[RpmGate] = None
+        self._cooldown: Optional[Cooldown] = None
+        self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
+
         self._closed = False
 
         b = cfg._normalize_base_url(cfg.base_url)
         self._has_v1 = b.endswith("/v1")
         self._base = b
 
-        # Initialize cache if configured
+        # Cache path (database opened lazily/reopened as needed)
         self._cache: Optional[PromptCache] = None
+        self._cache_path: Optional[str] = None
         if cfg.cache_dir:
             os.makedirs(cfg.cache_dir, exist_ok=True)
-            db_path = os.path.join(cfg.cache_dir, "minima_llm.db")
-            self._cache = PromptCache(db_path)
+            self._cache_path = os.path.join(cfg.cache_dir, "minima_llm.db")
+
+    def _ensure_async_resources(self) -> None:
+        """Lazily create/recreate async primitives for current event loop."""
+        loop = asyncio.get_running_loop()
+        if self._bound_loop is not loop:
+            # New event loop - recreate all async primitives
+            self._sem = asyncio.Semaphore(self.cfg.max_outstanding)
+            self._rpm = RpmGate(self.cfg.rpm)
+            self._cooldown = Cooldown(
+                self.cfg.cooldown_floor_s,
+                self.cfg.cooldown_cap_s,
+                self.cfg.cooldown_halflife_s
+            )
+            self._bound_loop = loop
+            self._closed = False
+
+    def _ensure_cache(self) -> Optional[PromptCache]:
+        """Ensure cache is open, reopen if previously closed."""
+        if self._cache_path is None:
+            return None
+        if self._cache is None:
+            self._cache = PromptCache(self._cache_path)
+        return self._cache
 
     @classmethod
     def from_env(cls) -> "OpenAIMinimaLlm":
@@ -512,11 +564,12 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         return cls(MinimaLlmConfig.from_env())
 
     async def aclose(self) -> None:
-        # urllib has no session to close; keep for symmetry.
+        """Close cache database. Backend can be reused - cache reopens automatically."""
         self._closed = True
         if self._cache is not None:
             print(f"Synchronizing cache at {self.cfg.cache_dir}.")
             self._cache.close()
+            self._cache = None  # Allow reopening on next use
             print("Cache synched.")
 
     def _endpoint(self, path: str) -> str:
@@ -608,13 +661,16 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         Returns MinimaLlmResponse on success, MinimaLlmFailure on error.
         Failures include full retry context: attempt count, timestamps, timeout.
         """
-        
+        # Ensure async resources are initialized for current event loop
+        self._ensure_async_resources()
+
         # Check cache first (unless force_refresh)
+        cache = self._ensure_cache()
         cache_key: Optional[str] = None
-        if self._cache is not None:
+        if cache is not None:
             cache_key = self._make_cache_key(req)
             if not force_refresh:
-                cached = self._cache.get(cache_key)
+                cached = cache.get(cache_key)
                 if cached is not None:
                     set_last_cached(True)
                     return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1], cached=True)
@@ -678,8 +734,8 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                     )
 
                 # Store in cache on success
-                if self._cache is not None and cache_key is not None:
-                    self._cache.put(cache_key, str(text), data)
+                if cache is not None and cache_key is not None:
+                    cache.put(cache_key, str(text), data)
 
                 set_last_cached(False)
                 return MinimaLlmResponse(request_id=req.request_id, text=str(text), raw=data)
