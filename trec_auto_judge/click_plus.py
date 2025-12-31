@@ -4,6 +4,7 @@ from .io import load_runs_failsave
 from .request import load_requests_from_irds, load_requests_from_file
 from .llm import MinimaLlmConfig
 from .llm_resolver import ModelPreferences, ModelResolver, ModelResolutionError
+from .workflow import Workflow, WorkflowMode, load_workflow, DEFAULT_WORKFLOW
 import click
 from . import AutoJudge
 
@@ -224,6 +225,20 @@ def option_nugget_banks():
     return decorator
 
 
+def option_workflow():
+    """Optional workflow.yml for declaring judge workflow."""
+    def decorator(func):
+        func = click.option(
+            "--workflow",
+            type=click.Path(exists=True, path_type=Path),
+            required=False,
+            default=None,
+            help="Path to workflow.yml declaring the judge's nugget/judge pipeline."
+        )(func)
+        return func
+    return decorator
+
+
 def _resolve_llm_config(llm_config_path: Optional[Path]) -> MinimaLlmConfig:
     """
     Resolve LLM config from llm-config.yml or environment.
@@ -430,5 +445,80 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         if qrels is not None:
             verify_qrels(qrels=qrels, expected_topic_ids=topic_ids, require_no_extras=True)
             write_qrel_file(qrel_out_file=output.with_suffix(".qrels"), qrels=qrels)
+
+    @cli.command("run")
+    @option_workflow()
+    @option_rag_responses()
+    @option_rag_topics()
+    @option_nugget_banks()
+    @option_llm_config()
+    @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
+    @click.option("--store-nuggets", type=Path, help="Output path for nuggets.", required=False)
+    def run_cmd(
+        workflow: Optional[Path],
+        rag_topics: Iterable[Request],
+        rag_responses: Iterable[Report],
+        nugget_banks: Optional[NuggetBanks],
+        llm_config: Optional[Path],
+        output: Path,
+        store_nuggets: Optional[Path]
+    ):
+        """Run judge according to workflow.yml (auto-dispatches based on mode)."""
+        # Load workflow
+        if workflow:
+            wf = load_workflow(workflow)
+            click.echo(f"Loaded workflow: {wf.mode.value}", err=True)
+        else:
+            wf = DEFAULT_WORKFLOW
+            click.echo(f"Using default workflow: {wf.mode.value}", err=True)
+
+        resolved_config = _resolve_llm_config(llm_config)
+        created_nuggets = None
+
+        # Step 1: Create nuggets if workflow requires it
+        if wf.calls_create_nuggets:
+            click.echo("Step 1: Creating nuggets...", err=True)
+            created_nuggets = auto_judge.create_nuggets(
+                rag_topics, resolved_config, nugget_banks=nugget_banks
+            )
+            if created_nuggets is None:
+                click.echo("Warning: Judge returned None from create_nuggets", err=True)
+            elif store_nuggets:
+                write_nugget_banks(created_nuggets, store_nuggets)
+                click.echo(f"Nuggets written to {store_nuggets}", err=True)
+
+        # Determine nuggets for judging
+        if wf.judge_uses_nuggets:
+            nuggets_for_judging = created_nuggets if created_nuggets is not None else nugget_banks
+        else:
+            nuggets_for_judging = nugget_banks  # Pass through (judge may ignore)
+
+        # Step 2: Judge
+        click.echo("Judging responses...", err=True)
+        leaderboard, qrels = auto_judge.judge(
+            rag_responses, rag_topics, resolved_config, nugget_banks=nuggets_for_judging
+        )
+
+        # Step 3: Handle nuggets emitted during judging
+        if wf.judge_emits_nuggets and store_nuggets:
+            # For modes where judge emits nuggets, check if qrels contains nugget info
+            # (This is a placeholder - actual implementation depends on judge behavior)
+            click.echo(f"Note: Judge may have emitted nuggets to {store_nuggets}", err=True)
+
+        # Write outputs
+        topic_ids = {t.request_id for t in rag_topics}
+        verify_leaderboard_topics(
+            expected_topic_ids=topic_ids,
+            entries=leaderboard.entries,
+            include_all_row=True,
+            require_no_extras=True
+        )
+        leaderboard.write(output)
+
+        if qrels is not None:
+            verify_qrels(qrels=qrels, expected_topic_ids=topic_ids, require_no_extras=True)
+            write_qrel_file(qrel_out_file=output.with_suffix(".qrels"), qrels=qrels)
+
+        click.echo(f"Done. Leaderboard written to {output}", err=True)
 
     return cli
