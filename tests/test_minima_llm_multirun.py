@@ -132,25 +132,33 @@ class TestOpenAIMinimaLlmMultiLoop:
         )
 
     def test_backend_async_resources_recreated_for_new_loop(self, backend_config):
-        """Backend should recreate async resources for a new event loop."""
+        """Backend should recreate Semaphore for new loop, but RpmGate/Cooldown persist."""
         backend = OpenAIMinimaLlm(backend_config)
 
         async def get_resource_ids():
             backend._ensure_async_resources()
+            # Also trigger RpmGate/Cooldown lock creation
+            backend._rpm._ensure_lock()
+            backend._cooldown._ensure_lock()
             return {
                 "sem": id(backend._sem),
                 "rpm": id(backend._rpm),
                 "cooldown": id(backend._cooldown),
+                "rpm_lock": id(backend._rpm._lock),
+                "cooldown_lock": id(backend._cooldown._lock),
                 "loop": id(backend._bound_loop),
             }
 
         ids_1 = asyncio.run(get_resource_ids())
         ids_2 = asyncio.run(get_resource_ids())
 
-        # All resources should be different (recreated for new loop)
+        # Semaphore should be recreated for new loop
         assert ids_1["sem"] != ids_2["sem"], "Semaphore should be recreated"
-        assert ids_1["rpm"] != ids_2["rpm"], "RpmGate should be recreated"
-        assert ids_1["cooldown"] != ids_2["cooldown"], "Cooldown should be recreated"
+        # RpmGate and Cooldown persist (same object) but their locks are recreated
+        assert ids_1["rpm"] == ids_2["rpm"], "RpmGate should persist across loops"
+        assert ids_1["cooldown"] == ids_2["cooldown"], "Cooldown should persist across loops"
+        assert ids_1["rpm_lock"] != ids_2["rpm_lock"], "RpmGate lock should be recreated"
+        assert ids_1["cooldown_lock"] != ids_2["cooldown_lock"], "Cooldown lock should be recreated"
         assert ids_1["loop"] != ids_2["loop"], "Loop reference should change"
 
     def test_backend_cache_reopens_after_close(self, backend_config):

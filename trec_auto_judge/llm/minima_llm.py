@@ -15,6 +15,164 @@ Key properties:
   - batch runner with heartbeat + early abort
 
 Environment variables are parsed in MinimaLlmConfig.from_env().
+
+
+DESIGN NOTES: Async Primitives and Multi-Loop Support
+======================================================
+
+This module is designed to support reusing the same backend instance across
+multiple `asyncio.run()` calls. This is important for workflows that call 
+`asyncio.run(run_dspy_batch(...))` twice in sequence (e.g., once for nugget
+generation, once for grading).
+
+1. LAZY INITIALIZATION OF ASYNC PRIMITIVES
+------------------------------------------
+
+**Problem**: `asyncio.Semaphore` and `asyncio.Lock` are bound to the event loop
+that exists when they are created. If you create them in `__init__` and later
+call `asyncio.run()` (which creates a new event loop), these primitives become
+invalid and raise:
+
+    RuntimeError: <asyncio.locks.Semaphore object> is bound to a different event loop
+
+**Solution**: Lazy per-loop initialization. Async primitives are created on
+first use within an async context, and recreated if the event loop changes.
+
+**Implementation**:
+
+  - `OpenAIMinimaLlm._ensure_async_resources()`: Called at the start of
+    `generate()`. Creates `Semaphore` and `Lock` if they don't exist or if
+    the current loop differs from `_bound_loop`.
+
+  - `RpmGate._ensure_lock()` and `Cooldown._ensure_lock()`: These classes
+    manage their own locks internally with the same pattern. This allows
+    them to be created once in `__init__` and persist across event loops
+    while their locks are recreated as needed.
+
+**Why RpmGate/Cooldown persist but Semaphore doesn't**:
+
+  - RpmGate and Cooldown have meaningful state (`_next_ok`, `_cooldown_s`)
+    that should persist across runs (rate limit timing).
+  - Semaphore has no meaningful state beyond its internal counter.
+  - Keeping RpmGate/Cooldown as persistent objects simplifies the design
+    and preserves rate limiting behavior.
+
+
+2. CACHE LOCK
+-------------
+
+**Problem**: Multiple async tasks may concurrently access the SQLite cache.
+While SQLite with WAL mode handles multi-process concurrency, concurrent
+access from the same connection within one process can cause issues.
+
+**Solution**: Protect cache `get()` and `put()` operations with an asyncio.Lock.
+
+**Implementation**:
+
+  - `_cache_lock` is created alongside `_sem` in `_ensure_async_resources()`.
+  - Cache reads and writes in `generate()` are wrapped with:
+
+        async with self._cache_lock:
+            cached = cache.get(cache_key)
+
+**Why this is safe for single-task usage**: An uncontended lock adds negligible
+overhead. The lock only blocks when multiple coroutines try to access the cache
+simultaneously.
+
+
+3. EVENT LOOP CHECKS
+--------------------
+
+**Problem**: Need to detect when a new event loop is in use so we can recreate
+loop-bound primitives.
+
+**Solution**: Store a reference to the current loop and compare on each call.
+
+**Implementation**:
+
+    def _ensure_async_resources(self) -> None:
+        loop = asyncio.get_running_loop()
+        if self._bound_loop is not loop:
+            # Recreate primitives for new loop
+            self._sem = asyncio.Semaphore(...)
+            self._cache_lock = asyncio.Lock()
+            self._bound_loop = loop
+
+**Why `asyncio.get_running_loop()`**: This returns the loop running in the
+current thread. It raises `RuntimeError` if called outside async context,
+which is correct—we only want to create async primitives within async code.
+
+
+4. CACHE REOPEN BEHAVIOR
+------------------------
+
+**Problem**: After `aclose()` is called, the cache database is closed. A
+subsequent `asyncio.run()` would fail with:
+
+    sqlite3.ProgrammingError: Cannot operate on a closed database
+
+**Solution**: Set `_cache = None` in `aclose()` and lazily reopen on next use.
+
+**Implementation**:
+
+    async def aclose(self):
+        if self._cache is not None:
+            self._cache.close()
+            self._cache = None  # Allows reopening
+
+    def _ensure_cache(self):
+        if self._cache is None and self._cache_path:
+            self._cache = PromptCache(self._cache_path)
+        return self._cache
+
+
+IMPORTANT: WHAT NOT TO DO
+=========================
+
+1. **DON'T create async primitives in `__init__`**:
+
+       # BAD - will fail across asyncio.run() calls
+       def __init__(self):
+           self._sem = asyncio.Semaphore(10)
+
+2. **DON'T store locks/semaphores without tracking the loop**:
+
+       # BAD - no way to detect loop change
+       def _ensure_sem(self):
+           if self._sem is None:
+               self._sem = asyncio.Semaphore(10)
+
+3. **DON'T use `asyncio.get_event_loop()` for loop detection**:
+
+       # BAD - deprecated, may create a new loop instead of returning current
+       loop = asyncio.get_event_loop()
+
+   Use `asyncio.get_running_loop()` instead.
+
+4. **DON'T forget to reset state that references the old loop**:
+
+       # BAD - _closed flag may be stale from previous loop
+       if self._closed:
+           return
+
+   We reset `_closed = False` in `_ensure_async_resources()`.
+
+5. **DON'T hold locks across `await` points that might change loops**:
+
+       # BAD - if somehow the loop changes mid-operation
+       async with self._lock:
+           await some_external_call()  # Could this switch contexts?
+
+   In practice, within a single `asyncio.run()` the loop is stable, but
+   be aware of this if integrating with other async frameworks.
+
+6. **DON'T recreate objects that have meaningful state**:
+
+       # BAD - loses rate limit timing across runs
+       def _ensure_async_resources(self):
+           self._rpm = RpmGate(self.cfg.rpm)  # State lost!
+
+   Instead, let such objects manage their own lock lifecycle internally.
 """
 
 import asyncio
@@ -516,11 +674,20 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
     def __init__(self, cfg: MinimaLlmConfig):
         self.cfg = cfg
 
-        # Lazy-init async primitives (created per event loop)
+        # Semaphore and cache lock are lazy-init (bound per event loop)
         self._sem: Optional[asyncio.Semaphore] = None
-        self._rpm: Optional[RpmGate] = None
-        self._cooldown: Optional[Cooldown] = None
+        self._cache_lock: Optional[asyncio.Lock] = None
         self._bound_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # RpmGate and Cooldown manage their own per-loop lock binding,
+        # so we create them once and let them persist across event loops.
+        # This preserves rate limit state across multiple asyncio.run() calls.
+        self._rpm = RpmGate(cfg.rpm)
+        self._cooldown = Cooldown(
+            cfg.cooldown_floor_s,
+            cfg.cooldown_cap_s,
+            cfg.cooldown_halflife_s
+        )
 
         self._closed = False
 
@@ -536,17 +703,16 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
             self._cache_path = os.path.join(cfg.cache_dir, "minima_llm.db")
 
     def _ensure_async_resources(self) -> None:
-        """Lazily create/recreate async primitives for current event loop."""
+        """Lazily create/recreate Semaphore and cache lock for current event loop.
+
+        RpmGate and Cooldown manage their own per-loop locks internally,
+        so they don't need to be recreated here.
+        """
         loop = asyncio.get_running_loop()
         if self._bound_loop is not loop:
-            # New event loop - recreate all async primitives
+            # New event loop - recreate async primitives (they're bound to a specific loop)
             self._sem = asyncio.Semaphore(self.cfg.max_outstanding)
-            self._rpm = RpmGate(self.cfg.rpm)
-            self._cooldown = Cooldown(
-                self.cfg.cooldown_floor_s,
-                self.cfg.cooldown_cap_s,
-                self.cfg.cooldown_halflife_s
-            )
+            self._cache_lock = asyncio.Lock()
             self._bound_loop = loop
             self._closed = False
 
@@ -665,12 +831,14 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         self._ensure_async_resources()
 
         # Check cache first (unless force_refresh)
+        # Cache operations are protected by lock to prevent concurrent access issues
         cache = self._ensure_cache()
         cache_key: Optional[str] = None
         if cache is not None:
             cache_key = self._make_cache_key(req)
             if not force_refresh:
-                cached = cache.get(cache_key)
+                async with self._cache_lock:  # type: ignore[union-attr]
+                    cached = cache.get(cache_key)
                 if cached is not None:
                     set_last_cached(True)
                     return MinimaLlmResponse(request_id=req.request_id, text=cached[0], raw=cached[1], cached=True)
@@ -733,9 +901,10 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                         attempt_timestamps=tuple(attempt_timestamps),
                     )
 
-                # Store in cache on success
+                # Store in cache on success (under lock)
                 if cache is not None and cache_key is not None:
-                    cache.put(cache_key, str(text), data)
+                    async with self._cache_lock:  # type: ignore[union-attr]
+                        cache.put(cache_key, str(text), data)
 
                 set_last_cached(False)
                 return MinimaLlmResponse(request_id=req.request_id, text=str(text), raw=data)
