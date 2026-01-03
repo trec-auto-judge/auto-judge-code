@@ -12,7 +12,7 @@ class TaskType(str, Enum):
     """Ragtime tasks"""
     MULTILINGUAL = "multilingual"
     ENGLISH = "english"
-
+    RAG = "rag"
 
 class ReportMetaData(BaseModel):
     """Report meta data for requested reports"""

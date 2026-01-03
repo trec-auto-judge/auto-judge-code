@@ -162,6 +162,7 @@ class MinimaLlmConfig:
     -----------------
     max_attempts:
         Maximum number of attempts per request (including initial attempt).
+        Set to 0 for infinite retries (will retry forever until success or Ctrl-C).
 
     base_backoff_s:
         Base delay for exponential backoff (seconds).
@@ -176,7 +177,7 @@ class MinimaLlmConfig:
     -----------------------
     cooldown_floor_s, cooldown_cap_s, cooldown_halflife_s:
         Parameters controlling a global cooldown after overload signals such as
-        HTTP 429/503/504. Cooldown decays with the given half-life.
+        HTTP 429/502/503/504. Cooldown decays with the given half-life.
 
     HTTP
     ----
@@ -204,7 +205,7 @@ class MinimaLlmConfig:
     max_backoff_s: float = 20.0
     jitter: float = 0.2
 
-    # Cooldown after overload (429/503/504)
+    # Cooldown after overload (429/502/503/504)
     cooldown_floor_s: float = 0.0
     cooldown_cap_s: float = 30.0
     cooldown_halflife_s: float = 20.0

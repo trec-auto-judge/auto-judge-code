@@ -343,7 +343,7 @@ def _is_retriable_status(status: int) -> bool:
 
 
 def _is_overload_status(status: int) -> bool:
-    return status in (429, 503, 504)
+    return status in (429, 502, 503, 504)
 
 
 # ----------------------------
@@ -859,6 +859,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         attempt = 0
         attempt_timestamps: List[float] = []
         last_body: Optional[str] = None
+        overload_warning_printed = False
 
         while True:
             attempt += 1
@@ -906,6 +907,9 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
                     async with self._cache_lock:  # type: ignore[union-attr]
                         cache.put(cache_key, str(text), data)
 
+                if overload_warning_printed:
+                    print("Server recovered. Resuming normal operation.")
+
                 set_last_cached(False)
                 return MinimaLlmResponse(request_id=req.request_id, text=str(text), raw=data)
 
@@ -915,8 +919,11 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
             if _is_overload_status(status) or status == 408:
                 # Timeout (408) or overload suggests server might be struggling
                 await self._cooldown.bump(retry_after or self.cfg.cooldown_floor_s or 1.0)
+                if not overload_warning_printed:
+                    print(f"Server overload (HTTP {status}). Retrying with cooldown. Press Ctrl-C to abort.")
+                    overload_warning_printed = True
 
-            if attempt >= self.cfg.max_attempts or not _is_retriable_status(status):
+            if (self.cfg.max_attempts > 0 and attempt >= self.cfg.max_attempts) or not _is_retriable_status(status):
                 error_type = "TimeoutError" if status == 408 else "HTTPError"
                 return MinimaLlmFailure(
                     request_id=req.request_id,
