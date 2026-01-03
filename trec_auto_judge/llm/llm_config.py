@@ -310,6 +310,48 @@ class MinimaLlmConfig:
             cache_dir=_env_str("CACHE_DIR"),
         )
 
+    @classmethod
+    def from_yaml(cls, path: "Path") -> "MinimaLlmConfig":
+        """
+        Load MinimaLlmConfig from a YAML file.
+
+        Supports direct config format with base_url and model:
+
+            base_url: "http://localhost:8000/v1"
+            model: "llama-3.3-70b-instruct"
+            api_key: "optional-key"  # optional
+
+        Args:
+            path: Path to the YAML config file
+
+        Returns:
+            MinimaLlmConfig instance
+
+        Raises:
+            FileNotFoundError: If the config file doesn't exist
+            ValueError: If required fields (base_url, model) are missing
+        """
+        import yaml
+        from pathlib import Path
+
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Config file not found: {path}")
+
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+
+        if "base_url" not in data:
+            raise ValueError(f"Missing required field 'base_url' in {path}")
+        if "model" not in data:
+            raise ValueError(f"Missing required field 'model' in {path}")
+
+        return cls(
+            base_url=cls._normalize_base_url(data["base_url"]),
+            model=data["model"],
+            api_key=data.get("api_key", ""),
+        )
+
     # ----------------------------
     # Pickle support (exclude api_key for security)
     # ----------------------------

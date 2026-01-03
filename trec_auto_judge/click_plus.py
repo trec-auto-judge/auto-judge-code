@@ -176,7 +176,20 @@ def option_llm_config():
             type=click.Path(exists=True, path_type=Path),
             required=False,
             default=None,
-            help="Path to llm-config.yml with model preferences"
+            help="Path to llm-config.yml (dev: base_url+model, submission: model_preferences)"
+        )(func)
+        return func
+    return decorator
+
+
+def option_submission():
+    """Flag to enable submission mode (resolve model_preferences)."""
+    def decorator(func):
+        func = click.option(
+            "--submission",
+            is_flag=True,
+            default=False,
+            help="Submission mode: resolve model_preferences against organizer's available models"
         )(func)
         return func
     return decorator
@@ -256,45 +269,47 @@ def option_workflow():
     return decorator
 
 
-def _resolve_llm_config(llm_config_path: Optional[Path]) -> MinimaLlmConfig:
+def _resolve_llm_config(llm_config_path: Optional[Path], submission: bool = False) -> MinimaLlmConfig:
     """
     Resolve LLM config from llm-config.yml or environment.
 
-    Supports two formats:
-    1. Direct config (dev mode): base_url + model → use as-is
-    2. Preferences (submission mode): model_preferences → resolve against available
+    Two modes:
+    - Dev mode (default): Load direct config (base_url + model) from file or env.
+      For judge developers testing with their local LLM.
+    - Submission mode (--submission): Resolve model_preferences against available
+      models provided by the organizer.
 
-    Fallback: MinimaLlmConfig.from_env()
+    Args:
+        llm_config_path: Path to llm-config.yml
+        submission: If True, use submission mode (resolve model_preferences)
     """
-    import yaml
-
-    if llm_config_path is not None:
+    if submission:
+        # Submission mode: resolve model_preferences against organizer's available models
+        if llm_config_path is None:
+            raise click.ClickException(
+                "Submission mode requires --llm-config with model_preferences"
+            )
         try:
-            with open(llm_config_path) as f:
-                data = yaml.safe_load(f) or {}
-
-            # Dev mode: direct config with base_url and model
-            if "base_url" in data and "model" in data:
-                config = MinimaLlmConfig(
-                    base_url=data["base_url"].rstrip("/"),
-                    model=data["model"],
-                    api_key=data.get("api_key", ""),
-                )
-                click.echo(f"Using direct config: {config.model} from {config.base_url}", err=True)
-                return config
-
-            # Submission mode: resolve preferences against available models
-            if "model_preferences" in data:
-                prefs = ModelPreferences.from_dict(data)
-                resolver = ModelResolver.from_env()
-                config = resolver.resolve(prefs)
-                click.echo(f"Resolved model: {config.model} from {config.base_url}", err=True)
-                return config
-
+            prefs = ModelPreferences.from_yaml(llm_config_path)
+            resolver = ModelResolver.from_env()
+            config = resolver.resolve(prefs)
+            click.echo(f"Submission mode - resolved model: {config.model} from {config.base_url}", err=True)
+            return config
         except ModelResolutionError as e:
             raise click.ClickException(str(e))
         except Exception as e:
-            click.echo(f"Warning: Could not load config from {llm_config_path}: {e}", err=True)
+            raise click.ClickException(f"Could not resolve model preferences from {llm_config_path}: {e}")
+
+    # Dev mode: load direct config (base_url + model)
+    if llm_config_path is not None:
+        try:
+            config = MinimaLlmConfig.from_yaml(llm_config_path)
+            click.echo(f"Dev mode - loaded config: {config.model} from {config.base_url}", err=True)
+            return config
+        except FileNotFoundError:
+            click.echo(f"Warning: Config file not found: {llm_config_path}", err=True)
+        except ValueError as e:
+            click.echo(f"Warning: {e}", err=True)
 
     # Fallback to environment-based config
     return MinimaLlmConfig.from_env()
@@ -359,6 +374,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_rag_topics()
     @option_nugget_banks()
     @option_llm_config()
+    @option_submission()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
     @click.option("--store-nuggets", type=Path, help="Store nuggets if judge emits them.", required=False)
     def judge_cmd(
@@ -366,11 +382,12 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         rag_responses: Iterable[Report],
         nugget_banks,
         llm_config: Optional[Path],
+        submission: bool,
         output: Path,
         store_nuggets: Optional[Path]
     ):
         """Judge RAG responses using existing nugget banks."""
-        resolved_config = _resolve_llm_config(llm_config)
+        resolved_config = _resolve_llm_config(llm_config, submission)
 
         run_judge(
             auto_judge=auto_judge,
@@ -388,15 +405,17 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_rag_topics()
     @option_nugget_banks()
     @option_llm_config()
+    @option_submission()
     @click.option("--store-nuggets", type=Path, help="Output nuggets file.", required=True)
     def nuggify_cmd(
         rag_topics: Iterable[Request],
         nugget_banks,
         llm_config: Optional[Path],
+        submission: bool,
         store_nuggets: Path
     ):
         """Create nugget banks from topics (optionally refining existing nuggets)."""
-        resolved_config = _resolve_llm_config(llm_config)
+        resolved_config = _resolve_llm_config(llm_config, submission)
 
         result = run_judge(
             auto_judge=auto_judge,
@@ -420,6 +439,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_rag_topics()
     @option_nugget_banks()
     @option_llm_config()
+    @option_submission()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
     @click.option("--store-nuggets", type=Path, help="Optional: store created nuggets.", required=False)
     def nuggify_and_judge_cmd(
@@ -427,11 +447,12 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         rag_responses: Iterable[Report],
         nugget_banks,
         llm_config: Optional[Path],
+        submission: bool,
         output: Path,
         store_nuggets: Optional[Path]
     ):
         """Create nuggets, then judge RAG responses (default command)."""
-        resolved_config = _resolve_llm_config(llm_config)
+        resolved_config = _resolve_llm_config(llm_config, submission)
 
         run_judge(
             auto_judge=auto_judge,
@@ -451,6 +472,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_rag_topics()
     @option_nugget_banks()
     @option_llm_config()
+    @option_submission()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
     @click.option("--store-nuggets", type=Path, help="Output path for nuggets.", required=False)
     def run_cmd(
@@ -459,6 +481,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         rag_responses: Iterable[Report],
         nugget_banks,
         llm_config: Optional[Path],
+        submission: bool,
         output: Path,
         store_nuggets: Optional[Path]
     ):
@@ -471,7 +494,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             wf = DEFAULT_WORKFLOW
             click.echo(f"Using default workflow: {wf.mode.value}", err=True)
 
-        resolved_config = _resolve_llm_config(llm_config)
+        resolved_config = _resolve_llm_config(llm_config, submission)
 
         run_judge(
             auto_judge=auto_judge,

@@ -119,7 +119,7 @@ class Report(BaseModel):
 
         # RAGTIME validation
         if self.responses is None:
-            raise RuntimeError(f"Report does not contain responses or amswer: {self}")
+            raise RuntimeError(f"Report does not contain responses or answer: {self}")
 
         # Expose as RAG format
         if self.answer is None:
