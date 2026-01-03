@@ -4,28 +4,11 @@ Workflow declaration for AutoJudge nugget/judge pipelines.
 Participants declare their workflow in workflow.yml to enable TIRA orchestration.
 """
 
-from enum import Enum
 from pathlib import Path
 from typing import Optional, Union
 
 import yaml
 from pydantic import BaseModel
-
-
-class WorkflowMode(str, Enum):
-    """Available workflow modes for judge execution."""
-
-    JUDGE_ONLY = "judge-only"
-    """Just judge, no nuggets involved."""
-
-    NUGGIFY_THEN_JUDGE = "nuggify-then-judge"
-    """Create nuggets first, store them, then judge using created nuggets."""
-
-    JUDGE_EMITS_NUGGETS = "judge-emits-nuggets"
-    """Judge creates nuggets as side output (no separate nuggify step)."""
-
-    NUGGIFY_AND_REFINE = "nuggify-and-refine"
-    """Create nuggets first, then judge refines and emits more nuggets."""
 
 
 # Built-in NuggetBanks type paths (for convenience)
@@ -37,37 +20,33 @@ DEFAULT_NUGGET_BANKS_TYPE = NUGGET_BANKS_AUTOARGUE
 
 
 class Workflow(BaseModel):
-    """Workflow configuration loaded from workflow.yml."""
+    """
+    Workflow configuration loaded from workflow.yml.
 
-    mode: WorkflowMode = WorkflowMode.JUDGE_ONLY
+    Controls which steps are executed:
+    - create_nuggets: Whether to call create_nuggets() to generate/refine nuggets
+    - judge: Whether to call judge() to produce leaderboard/qrels
+
+    Example workflow.yml:
+        create_nuggets: true
+        judge: true
+        nugget_banks_type: "trec_auto_judge.nugget_data.NuggetBanks"
+    """
+
+    create_nuggets: bool = False
+    """Whether to call create_nuggets() to generate/refine nuggets."""
+
+    judge: bool = True
+    """Whether to call judge() to produce leaderboard/qrels."""
+
     nugget_banks_type: str = DEFAULT_NUGGET_BANKS_TYPE
     """Dotted import path for NuggetBanks container class."""
+
     nugget_input: Optional[str] = None
+    """Path to existing nugget banks to load (for refinement or judge input)."""
+
     nugget_output: Optional[str] = None
-
-    @property
-    def calls_create_nuggets(self) -> bool:
-        """Whether this workflow calls create_nuggets() before judge()."""
-        return self.mode in (
-            WorkflowMode.NUGGIFY_THEN_JUDGE,
-            WorkflowMode.NUGGIFY_AND_REFINE,
-        )
-
-    @property
-    def judge_emits_nuggets(self) -> bool:
-        """Whether judge() emits nuggets (requires --store-nuggets)."""
-        return self.mode in (
-            WorkflowMode.JUDGE_EMITS_NUGGETS,
-            WorkflowMode.NUGGIFY_AND_REFINE,
-        )
-
-    @property
-    def judge_uses_nuggets(self) -> bool:
-        """Whether judge() expects nugget_banks input."""
-        return self.mode in (
-            WorkflowMode.NUGGIFY_THEN_JUDGE,
-            WorkflowMode.NUGGIFY_AND_REFINE,
-        )
+    """Path to store created/refined nugget banks."""
 
 
 def load_workflow(source: Union[str, Path]) -> Workflow:
@@ -81,7 +60,8 @@ def load_workflow(source: Union[str, Path]) -> Workflow:
         Workflow configuration
 
     Example workflow.yml:
-        mode: "nuggify-then-judge"
+        create_nuggets: true
+        judge: true
     """
     path = Path(source)
     with open(path) as f:
@@ -105,5 +85,5 @@ def load_workflow_from_directory(directory: Union[str, Path]) -> Optional[Workfl
     return None
 
 
-# Default workflow for judges that don't declare one
-DEFAULT_WORKFLOW = Workflow(mode=WorkflowMode.JUDGE_ONLY)
+# Default workflow for judges that don't declare one (judge only, no nuggets)
+DEFAULT_WORKFLOW = Workflow()

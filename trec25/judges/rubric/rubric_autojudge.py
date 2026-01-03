@@ -141,6 +141,7 @@ class RubricJudge(AutoJudge):
 
     def create_nuggets(
         self,
+        rag_responses: Sequence[Report],
         rag_topics: Sequence["Request"],
         llm_config: MinimaLlmConfig,
         nugget_banks: Optional["NuggetBanks"] = None,
@@ -333,7 +334,7 @@ class RubricJudge(AutoJudge):
         # Build qrels from grade data
         qrels = build_qrels(records=grade_data, spec=RUBRIC_QRELS) if grade_data else None
 
-        return (leaderboard, qrels, None)
+        return (leaderboard, qrels)
 
     def _build_leaderboard(self, response_grades: Dict[str, Dict[str, Any]]) -> Leaderboard:
         """Build leaderboard from aggregated response grades."""

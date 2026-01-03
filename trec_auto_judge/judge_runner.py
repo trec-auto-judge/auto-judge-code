@@ -30,28 +30,28 @@ class JudgeResult:
 
 def run_judge(
     auto_judge,
+    rag_responses: Iterable[Report],
     rag_topics: Sequence[Request],
     llm_config: MinimaLlmConfig,
-    rag_responses: Optional[Iterable[Report]] = None,
     nugget_banks: Optional[NuggetBanksProtocol] = None,
     output_path: Optional[Path] = None,
     store_nuggets_path: Optional[Path] = None,
-    create_nuggets: bool = False,
-    modify_nuggets: bool = False,
+    do_create_nuggets: bool = False,
+    do_judge: bool = True,
 ) -> JudgeResult:
     """
     Execute judge workflow with nugget lifecycle management.
 
     Args:
         auto_judge: AutoJudge implementation
+        rag_responses: RAG responses to evaluate
         rag_topics: Topics/queries to evaluate
         llm_config: LLM configuration
-        rag_responses: RAG responses to judge (None for nuggify-only)
         nugget_banks: Input nugget banks (any NuggetBanksProtocol implementation)
-        output_path: Leaderboard output path (None for nuggify-only)
-        store_nuggets_path: Path to store nuggets
-        create_nuggets: If True, call create_nuggets() before judging
-        modify_nuggets: If True, judge() may modify nuggets (save after judge)
+        output_path: Leaderboard output path
+        store_nuggets_path: Path to store created/refined nuggets
+        do_create_nuggets: If True, call create_nuggets()
+        do_judge: If True, call judge()
 
     Returns:
         JudgeResult with leaderboard, qrels, and final nuggets
@@ -60,9 +60,10 @@ def run_judge(
     leaderboard = None
     qrels = None
 
-    # Step 1: Create nuggets if requested
-    if create_nuggets:
+    # Step 1: Create/refine nuggets if requested
+    if do_create_nuggets:
         current_nuggets = auto_judge.create_nuggets(
+            rag_responses=rag_responses,
             rag_topics=rag_topics,
             llm_config=llm_config,
             nugget_banks=nugget_banks,
@@ -74,24 +75,16 @@ def run_judge(
             if store_nuggets_path:
                 write_nugget_banks_generic(current_nuggets, store_nuggets_path)
 
-    # Step 2: Judge if we have responses
-    if rag_responses is not None:
-        leaderboard, qrels, emitted_nuggets = auto_judge.judge(
+    # Step 2: Judge if requested
+    if do_judge:
+        leaderboard, qrels = auto_judge.judge(
             rag_responses=rag_responses,
             rag_topics=rag_topics,
             llm_config=llm_config,
             nugget_banks=current_nuggets,
         )
 
-        # Step 3: Handle modified nuggets
-        if modify_nuggets and emitted_nuggets is not None:
-            # Verify emitted nuggets
-            NuggetBanksVerification(emitted_nuggets, rag_topics).all()
-            current_nuggets = emitted_nuggets
-            if store_nuggets_path:
-                write_nugget_banks_generic(emitted_nuggets, store_nuggets_path)
-
-        # Step 4: Write outputs
+        # Step 3: Write outputs
         if output_path:
             _write_outputs(
                 leaderboard=leaderboard,

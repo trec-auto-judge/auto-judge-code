@@ -24,28 +24,35 @@ class AutoJudge(Protocol):
         llm_config: MinimaLlmConfig,
         nugget_banks: Optional[NuggetBanksProtocol] = None,
         **kwargs
-    ) -> tuple["Leaderboard", Optional["Qrels"], Optional[NuggetBanksProtocol]]:
+    ) -> tuple["Leaderboard", Optional["Qrels"]]:
         """
         Judge RAG responses against topics.
 
         Returns:
             - Leaderboard: Rankings/scores for runs
             - Qrels: Optional fine-grained relevance judgments
-            - NuggetBanks: Optional modified/emitted nuggets (for judge-emits-nuggets mode)
         """
         ...
 
     def create_nuggets(
         self,
+        rag_responses: Iterable["Report"],
         rag_topics: Sequence["Request"],
         llm_config: MinimaLlmConfig,
         nugget_banks: Optional[NuggetBanksProtocol] = None,
         **kwargs
     ) -> Optional[NuggetBanksProtocol]:
         """
-        Create nugget banks for the given topics.
-        If existing_nuggets is provided, refine/extend them.
-        Default implementation raises NotImplementedError.
+        Create or refine nugget banks based on RAG responses.
+
+        Args:
+            rag_responses: RAG system outputs to analyze for nugget creation/refinement
+            rag_topics: Evaluation topics/queries
+            llm_config: LLM configuration for nugget generation
+            nugget_banks: Optional existing nuggets to refine/extend
+
+        Returns:
+            NuggetBanks container, or None if judge doesn't support nuggets
         """
         ...
 

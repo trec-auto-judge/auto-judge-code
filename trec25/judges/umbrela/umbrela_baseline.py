@@ -137,22 +137,12 @@ def umbrela_to_qrels(
 class UmbrelaJudge(AutoJudge):
     def create_nuggets(
         self,
+        rag_responses: Sequence[Report],
         rag_topics: Sequence["Request"],
         llm_config: MinimaLlmConfig,
         nugget_banks: Optional["NuggetBanks"] = None,
         **kwargs
     ) -> Optional["NuggetBanks"]:
-        # Naive nugget bank for testing
-        # banks = list()
-        # for topic in rag_topics:
-        #     topic_str = topic.problem_statement
-        #     bank = NuggetBank(query_id = topic.request_id, title_query=topic_str)
-        #     bank.add_nuggets(
-        #         [NuggetQuestion.from_lazy(topic.request_id, f"Is this relevant for: {topic_str}?", None)]
-        #     )
-        #     bank.index_nuggets()
-        #     banks.append(bank)
-        # return NuggetBanks.from_banks_list(banks=banks)
         return None
 
             
@@ -239,8 +229,7 @@ class UmbrelaJudge(AutoJudge):
 
         leaderboard = umbrela_to_leaderboard(prompt_output=prompt_output)
         qrels = umbrela_to_qrels(prompt_output)
-        # qrels = None
-        return (leaderboard, qrels, None)
+        return (leaderboard, qrels)
 
 
 if __name__ == '__main__':

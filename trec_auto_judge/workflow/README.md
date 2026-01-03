@@ -11,11 +11,11 @@ class AutoJudge(Protocol):
     nugget_banks_type: Type[NuggetBanksProtocol]  # Optional: declare nugget format
 
     def judge(self, rag_responses, rag_topics, llm_config, nugget_banks=None, **kwargs):
-        """Score RAG responses. Returns (Leaderboard, Qrels, NuggetBanks)."""
+        """Score RAG responses. Returns (Leaderboard, Qrels)."""
         ...
 
-    def create_nuggets(self, rag_topics, llm_config, nugget_banks=None, **kwargs):
-        """Create nugget banks. Returns NuggetBanks or None."""
+    def create_nuggets(self, rag_responses, rag_topics, llm_config, nugget_banks=None, **kwargs):
+        """Create or refine nugget banks based on RAG responses. Returns NuggetBanks or None."""
         ...
 ```
 
@@ -29,9 +29,9 @@ from trec_auto_judge import Leaderboard
 class SimpleJudge:
     def judge(self, rag_responses, rag_topics, llm_config, **kwargs):
         leaderboard = ...  # Score responses
-        return leaderboard, None, None
+        return leaderboard, None  # (Leaderboard, Qrels)
 
-    def create_nuggets(self, rag_topics, llm_config, **kwargs):
+    def create_nuggets(self, rag_responses, rag_topics, llm_config, **kwargs):
         return None
 ```
 
@@ -62,13 +62,13 @@ from trec_auto_judge.nugget_data import NuggetBanks, NuggetBank, NuggetQuestion
 class MyJudge:
     nugget_banks_type: Type[NuggetBanksProtocol] = NuggetBanks
 
-    def create_nuggets(self, rag_topics, llm_config, nugget_banks=None, **kwargs):
+    def create_nuggets(self, rag_responses, rag_topics, llm_config, nugget_banks=None, **kwargs):
         banks = []
         for topic in rag_topics:
             bank = NuggetBank(query_id=topic.request_id, title_query=topic.title)
 
-            # Generate nuggets (e.g., via LLM)
-            questions = generate_questions(topic, llm_config)
+            # Generate/refine nuggets based on responses (e.g., via LLM)
+            questions = generate_questions(topic, rag_responses, llm_config)
             bank.add_nuggets(questions)
 
             banks.append(bank)
@@ -95,7 +95,7 @@ def judge(self, rag_responses, rag_topics, llm_config, nugget_banks=None, **kwar
         scores[topic_id] = score
 
     leaderboard = build_leaderboard(scores)
-    return leaderboard, None, None  # (Leaderboard, Qrels, emitted_nuggets)
+    return leaderboard, None  # (Leaderboard, Qrels)
 ```
 
 ### Step 4: Register the CLI
@@ -113,51 +113,46 @@ if __name__ == "__main__":
 
 ## Workflow Declaration
 
-Create `workflow.yml` to declare how your judge uses nuggets:
+Create `workflow.yml` to declare how your judge uses nuggets. The workflow uses boolean flags:
 
 ```yaml
-mode: "nuggify-then-judge"
+create_nuggets: true   # Call create_nuggets() to generate/refine nuggets
+judge: true            # Call judge() to produce leaderboard/qrels
 ```
 
-### Available Modes
+### Common Workflow Configurations
 
-| Mode | create_nuggets() | judge() receives nuggets | judge() emits nuggets |
-|------|------------------|--------------------------|----------------------|
-| `judge-only` | not called | no | no |
-| `nuggify-then-judge` | called first | yes (from create_nuggets) | no |
-| `judge-emits-nuggets` | not called | no | yes |
-| `nuggify-and-refine` | called first | yes | yes (refined) |
+| Configuration | create_nuggets | judge | Description |
+|--------------|----------------|-------|-------------|
+| Judge only | `false` | `true` | Judge doesn't use nuggets |
+| Nuggify then judge | `true` | `true` | Create nuggets, then judge with them |
+| Nuggify only | `true` | `false` | Just create nuggets, no judging |
 
-### judge-only
+### Judge Only (Default)
 
 Judge doesn't use nuggets at all.
 
 ```yaml
-mode: "judge-only"
+create_nuggets: false
+judge: true
 ```
 
-### nuggify-then-judge
+### Nuggify Then Judge
 
 Create nuggets first, then judge using them. Most common for nugget-based evaluation.
 
 ```yaml
-mode: "nuggify-then-judge"
+create_nuggets: true
+judge: true
 ```
 
-### judge-emits-nuggets
+### Nuggify Only
 
-Judge creates nuggets as a side-effect during judging (single pass).
-
-```yaml
-mode: "judge-emits-nuggets"
-```
-
-### nuggify-and-refine
-
-Create initial nuggets, then judge refines them based on responses.
+Create nuggets without judging (useful for nugget bank preparation).
 
 ```yaml
-mode: "nuggify-and-refine"
+create_nuggets: true
+judge: false
 ```
 
 ## Running the Judge
@@ -165,22 +160,22 @@ mode: "nuggify-and-refine"
 ### CLI Subcommands
 
 ```bash
-# Create nuggets only
-./judge.py nuggify --rag-topics topics.jsonl --store-nuggets nuggets.jsonl
+# Create/refine nuggets only
+./judge.py nuggify --rag-responses runs/ --rag-topics topics.jsonl --store-nuggets nuggets.jsonl
 
 # Judge with existing nuggets
 ./judge.py judge --rag-responses runs/ --nugget-banks nuggets.jsonl --output leaderboard.trec
 
-# Create nuggets then judge (default)
-./judge.py nuggify-and-judge --rag-responses runs/ --output leaderboard.trec
-
-# Execute based on workflow.yml
+# Execute based on workflow.yml (default command)
 ./judge.py run --workflow workflow.yml --rag-responses runs/ --output leaderboard.trec
+
+# Run without subcommand uses 'run' with default workflow (judge only)
+./judge.py --rag-responses runs/ --output leaderboard.trec
 ```
 
 ### Default Behavior
 
-Running without a subcommand executes `nuggify-and-judge`:
+Running without a subcommand executes `run` with the default workflow (`judge=True, create_nuggets=False`):
 
 ```bash
 ./judge.py --rag-responses runs/ --output leaderboard.trec
@@ -238,7 +233,7 @@ from trec_auto_judge.nugget_data import (
 class NuggetizerJudge:
     nugget_banks_type: Type[NuggetBanksProtocol] = NuggetizerNuggetBanks
 
-    def create_nuggets(self, rag_topics, llm_config, **kwargs):
+    def create_nuggets(self, rag_responses, rag_topics, llm_config, **kwargs):
         banks = []
         for topic in rag_topics:
             bank = NuggetizerNuggetBank(qid=topic.request_id, query=topic.title)

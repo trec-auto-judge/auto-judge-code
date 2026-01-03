@@ -33,6 +33,7 @@ LEADERBOARD_SPEC = LeaderboardSpec(measures=(
 class RetrievalJudge(AutoJudge):
     def create_nuggets(
         self,
+        rag_responses: Sequence["Report"],
         rag_topics: Sequence["Request"],
         llm_config: MinimaLlmConfig,
         nugget_banks: Optional["NuggetBanks"] = None,

@@ -22,13 +22,14 @@ NAIVE_LEADERBOARD_SPEC = LeaderboardSpec(measures=(
 class NaiveJudge(AutoJudge):
     def create_nuggets(
         self,
+        rag_responses: Sequence["Report"],
         rag_topics: Sequence["Request"],
         llm_config: MinimaLlmConfig,
         nugget_banks: Optional["NuggetBanks"] = None,
         **kwargs
     ) -> Optional["NuggetBanks"]:
         return None
-        
+
     def judge(self, rag_responses: Sequence["Report"]
               , rag_topics: Sequence["Request"]
               , llm_config:MinimaLlmConfig
@@ -45,7 +46,7 @@ class NaiveJudge(AutoJudge):
 
         leaderboard = ret.build()
         LeaderboardVerification(leaderboard).all()
-        return leaderboard, None, None
+        return leaderboard, None
 
 
 if __name__ == '__main__':

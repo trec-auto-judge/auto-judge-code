@@ -352,17 +352,17 @@ class DefaultGroup(click.Group):
 def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     """
     Create a Click command group for an AutoJudge with subcommands:
-    - nuggify: Create nugget banks only
+    - nuggify: Create/refine nugget banks only
     - judge: Judge with existing nugget banks
-    - nuggify-and-judge: Create nuggets then judge (DEFAULT)
+    - run: Execute according to workflow.yml (DEFAULT)
 
-    For backwards compatibility, invoking without a subcommand runs nuggify-and-judge.
+    Invoking without a subcommand runs the 'run' command.
     """
     from .request import Request
     from .report import Report
     from typing import Iterable
 
-    @click.group(cmd_name, cls=DefaultGroup, default_cmd_name="nuggify-and-judge")
+    @click.group(cmd_name, cls=DefaultGroup, default_cmd_name="run")
     @click.pass_context
     def cli(ctx):
         """AutoJudge command group."""
@@ -376,7 +376,6 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_llm_config()
     @option_submission()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
-    @click.option("--store-nuggets", type=Path, help="Store nuggets if judge emits them.", required=False)
     def judge_cmd(
         rag_topics: Iterable[Request],
         rag_responses: Iterable[Report],
@@ -384,87 +383,55 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         llm_config: Optional[Path],
         submission: bool,
         output: Path,
-        store_nuggets: Optional[Path]
     ):
         """Judge RAG responses using existing nugget banks."""
         resolved_config = _resolve_llm_config(llm_config, submission)
 
         run_judge(
             auto_judge=auto_judge,
+            rag_responses=rag_responses,
             rag_topics=list(rag_topics),
             llm_config=resolved_config,
-            rag_responses=rag_responses,
             nugget_banks=nugget_banks,
             output_path=output,
-            store_nuggets_path=store_nuggets,
-            create_nuggets=False,
-            modify_nuggets=True,  # Allow judge to emit nuggets
+            do_create_nuggets=False,
+            do_judge=True,
         )
 
     @cli.command("nuggify")
+    @option_rag_responses()
     @option_rag_topics()
     @option_nugget_banks()
     @option_llm_config()
     @option_submission()
     @click.option("--store-nuggets", type=Path, help="Output nuggets file.", required=True)
     def nuggify_cmd(
+        rag_responses: Iterable[Report],
         rag_topics: Iterable[Request],
         nugget_banks,
         llm_config: Optional[Path],
         submission: bool,
         store_nuggets: Path
     ):
-        """Create nugget banks from topics (optionally refining existing nuggets)."""
+        """Create or refine nugget banks based on RAG responses."""
         resolved_config = _resolve_llm_config(llm_config, submission)
 
         result = run_judge(
             auto_judge=auto_judge,
+            rag_responses=rag_responses,
             rag_topics=list(rag_topics),
             llm_config=resolved_config,
-            rag_responses=None,  # No judging
             nugget_banks=nugget_banks,
             output_path=None,
             store_nuggets_path=store_nuggets,
-            create_nuggets=True,
-            modify_nuggets=False,
+            do_create_nuggets=True,
+            do_judge=False,
         )
 
         if result.nuggets is None:
             click.echo("Warning: Judge doesn't create nuggets (create_nuggets returned None)", err=True)
         else:
             click.echo(f"Nuggets written to {store_nuggets}", err=True)
-
-    @cli.command("nuggify-and-judge")
-    @option_rag_responses()
-    @option_rag_topics()
-    @option_nugget_banks()
-    @option_llm_config()
-    @option_submission()
-    @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
-    @click.option("--store-nuggets", type=Path, help="Optional: store created nuggets.", required=False)
-    def nuggify_and_judge_cmd(
-        rag_topics: Iterable[Request],
-        rag_responses: Iterable[Report],
-        nugget_banks,
-        llm_config: Optional[Path],
-        submission: bool,
-        output: Path,
-        store_nuggets: Optional[Path]
-    ):
-        """Create nuggets, then judge RAG responses (default command)."""
-        resolved_config = _resolve_llm_config(llm_config, submission)
-
-        run_judge(
-            auto_judge=auto_judge,
-            rag_topics=list(rag_topics),
-            llm_config=resolved_config,
-            rag_responses=rag_responses,
-            nugget_banks=nugget_banks,
-            output_path=output,
-            store_nuggets_path=store_nuggets,
-            create_nuggets=True,
-            modify_nuggets=True,  # Save after both create and judge
-        )
 
     @cli.command("run")
     @option_workflow()
@@ -477,35 +444,35 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @click.option("--store-nuggets", type=Path, help="Output path for nuggets.", required=False)
     def run_cmd(
         workflow: Optional[Path],
-        rag_topics: Iterable[Request],
         rag_responses: Iterable[Report],
+        rag_topics: Iterable[Request],
         nugget_banks,
         llm_config: Optional[Path],
         submission: bool,
         output: Path,
         store_nuggets: Optional[Path]
     ):
-        """Run judge according to workflow.yml (auto-dispatches based on mode)."""
+        """Run judge according to workflow.yml (default command)."""
         # Load workflow
         if workflow:
             wf = load_workflow(workflow)
-            click.echo(f"Loaded workflow: {wf.mode.value}", err=True)
+            click.echo(f"Loaded workflow: create_nuggets={wf.create_nuggets}, judge={wf.judge}", err=True)
         else:
             wf = DEFAULT_WORKFLOW
-            click.echo(f"Using default workflow: {wf.mode.value}", err=True)
+            click.echo(f"Using default workflow: create_nuggets={wf.create_nuggets}, judge={wf.judge}", err=True)
 
         resolved_config = _resolve_llm_config(llm_config, submission)
 
         run_judge(
             auto_judge=auto_judge,
+            rag_responses=rag_responses,
             rag_topics=list(rag_topics),
             llm_config=resolved_config,
-            rag_responses=rag_responses,
             nugget_banks=nugget_banks,
             output_path=output,
             store_nuggets_path=store_nuggets,
-            create_nuggets=wf.calls_create_nuggets,
-            modify_nuggets=wf.judge_emits_nuggets,
+            do_create_nuggets=wf.create_nuggets,
+            do_judge=wf.judge,
         )
 
         click.echo(f"Done. Leaderboard written to {output}", err=True)

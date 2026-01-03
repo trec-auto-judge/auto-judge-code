@@ -133,11 +133,11 @@ class AutoJudgeTestDriver:
         self.nuggets: Optional[NuggetBanks] = None
         self.leaderboard: Optional[Leaderboard] = None
         self.qrels: Optional[Qrels] = None
-        self.emitted_nuggets: Optional[NuggetBanks] = None
 
     def run_create_nuggets(self, existing_nuggets: Optional[NuggetBanks] = None):
         """Run create_nuggets and store results."""
         self.nuggets = self.auto_judge.create_nuggets(
+            rag_responses=self.rag_responses,
             rag_topics=self.rag_topics,
             llm_config=self.llm_config,
             nugget_banks=existing_nuggets,
@@ -148,19 +148,12 @@ class AutoJudgeTestDriver:
         """Run judge and store results."""
         nuggets_to_use = nugget_banks or self.nuggets
 
-        result = self.auto_judge.judge(
+        self.leaderboard, self.qrels = self.auto_judge.judge(
             rag_responses=self.rag_responses,
             rag_topics=self.rag_topics,
             llm_config=self.llm_config,
             nugget_banks=nuggets_to_use,
         )
-
-        # Handle both 2-tuple and 3-tuple returns
-        if len(result) == 3:
-            self.leaderboard, self.qrels, self.emitted_nuggets = result
-        else:
-            self.leaderboard, self.qrels = result
-            self.emitted_nuggets = None
 
         return self.leaderboard, self.qrels
 
