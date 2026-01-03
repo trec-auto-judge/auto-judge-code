@@ -484,6 +484,12 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
 
         resolved_config = _resolve_llm_config(llm_config, submission)
 
+        # Resolve nugget output path: CLI arg takes precedence, then workflow config
+        nugget_output_path = store_nuggets
+        if nugget_output_path is None and wf.nugget_output:
+            nugget_output_path = Path(wf.nugget_output)
+            click.echo(f"Using nugget output from workflow: {nugget_output_path}", err=True)
+
         run_judge(
             auto_judge=auto_judge,
             rag_responses=rag_responses,
@@ -491,7 +497,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             llm_config=resolved_config,
             nugget_banks=nugget_banks,
             output_path=output,
-            store_nuggets_path=store_nuggets,
+            store_nuggets_path=nugget_output_path,
             do_create_nuggets=wf.create_nuggets,
             do_judge=wf.judge,
         )
