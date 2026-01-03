@@ -3,8 +3,11 @@
 from .workflow import (
     Workflow,
     WorkflowMode,
-    NuggetFormat,
     load_workflow,
     load_workflow_from_directory,
     DEFAULT_WORKFLOW,
+    # Built-in NuggetBanks type paths
+    NUGGET_BANKS_AUTOARGUE,
+    NUGGET_BANKS_NUGGETIZER,
+    DEFAULT_NUGGET_BANKS_TYPE,
 )

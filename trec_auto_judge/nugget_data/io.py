@@ -1,6 +1,7 @@
 
 import gzip
 import hashlib
+import importlib
 import json
 from pathlib import Path
 from types import MappingProxyType
@@ -9,6 +10,29 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 from enum import Enum
 from datetime import datetime, timezone
+
+
+def import_nugget_banks_type(type_path: str) -> Type:
+    """
+    Import a NuggetBanks container type from a dotted path.
+
+    Args:
+        type_path: Dotted import path, e.g., "trec_auto_judge.nugget_data.NuggetBanks"
+
+    Returns:
+        The container class (must satisfy NuggetBanksProtocol)
+
+    Raises:
+        ImportError: If module or class not found
+        AttributeError: If class not found in module
+
+    Example:
+        container_type = import_nugget_banks_type("trec_auto_judge.nugget_data.NuggetBanks")
+        banks = load_nugget_banks_generic(path, container_type)
+    """
+    module_path, class_name = type_path.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, class_name)
 
 
 # =============================================================================

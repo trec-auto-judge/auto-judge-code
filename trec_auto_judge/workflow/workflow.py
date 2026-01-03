@@ -28,21 +28,20 @@ class WorkflowMode(str, Enum):
     """Create nuggets first, then judge refines and emits more nuggets."""
 
 
-class NuggetFormat(str, Enum):
-    """Nugget bank format expected by the judge."""
+# Built-in NuggetBanks type paths (for convenience)
+NUGGET_BANKS_AUTOARGUE = "trec_auto_judge.nugget_data.NuggetBanks"
+NUGGET_BANKS_NUGGETIZER = "trec_auto_judge.nugget_data.NuggetizerNuggetBanks"
 
-    AUTOARGUE = "autoargue"
-    """NuggetBanks format (trec_auto_judge.nugget_data)."""
-
-    NUGGETIZER = "nuggetizer"
-    """NuggetizerNuggetBanks format (autonuggetizer)."""
+# Default type
+DEFAULT_NUGGET_BANKS_TYPE = NUGGET_BANKS_AUTOARGUE
 
 
 class Workflow(BaseModel):
     """Workflow configuration loaded from workflow.yml."""
 
     mode: WorkflowMode = WorkflowMode.JUDGE_ONLY
-    nugget_format: NuggetFormat = NuggetFormat.AUTOARGUE
+    nugget_banks_type: str = DEFAULT_NUGGET_BANKS_TYPE
+    """Dotted import path for NuggetBanks container class."""
     nugget_input: Optional[str] = None
     nugget_output: Optional[str] = None
 

@@ -448,3 +448,153 @@ def test_backwards_compat_old_claim_fields():
     assert claim.query_id == "q1"
     # Old fields should not be present
     assert not hasattr(claim, "related_question_text") or claim.__dict__.get("related_question_text") is None
+
+
+# ============ Protocol-based I/O tests ============
+
+def test_import_nugget_banks_type():
+    """Test dynamic import of NuggetBanks container types."""
+    from trec_auto_judge.nugget_data.io import import_nugget_banks_type
+
+    # Import NuggetBanks
+    nb_type = import_nugget_banks_type("trec_auto_judge.nugget_data.NuggetBanks")
+    assert nb_type is NuggetBanks
+
+    # Import NuggetizerNuggetBanks
+    from trec_auto_judge.nugget_data import NuggetizerNuggetBanks
+    nnb_type = import_nugget_banks_type("trec_auto_judge.nugget_data.NuggetizerNuggetBanks")
+    assert nnb_type is NuggetizerNuggetBanks
+
+
+def test_import_nugget_banks_type_invalid():
+    """Test that invalid import paths raise appropriate errors."""
+    from trec_auto_judge.nugget_data.io import import_nugget_banks_type
+    import pytest
+
+    # Non-existent module
+    with pytest.raises(ModuleNotFoundError):
+        import_nugget_banks_type("nonexistent.module.Class")
+
+    # Non-existent class
+    with pytest.raises(AttributeError):
+        import_nugget_banks_type("trec_auto_judge.nugget_data.NonExistentClass")
+
+
+def test_load_nugget_banks_generic():
+    """Test protocol-based generic loading."""
+    from trec_auto_judge.nugget_data import (
+        NuggetBanks, NuggetBank, NuggetQuestion,
+        load_nugget_banks_generic, write_nugget_banks_generic
+    )
+
+    # Create test data
+    bank = NuggetBank(query_id="test-1", title_query="Test Topic")
+    bank.add_nuggets(NuggetQuestion.from_lazy("test-1", "What is X?", ["Answer"]))
+    banks = NuggetBanks.from_banks_list([bank])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "generic_test.jsonl"
+
+        # Write using generic function
+        write_nugget_banks_generic(banks, path)
+
+        # Load using generic function
+        loaded = load_nugget_banks_generic(path, NuggetBanks)
+
+        assert len(loaded.banks) == 1
+        assert "test-1" in loaded.banks
+        assert loaded.banks["test-1"].title_query == "Test Topic"
+
+
+def test_write_nugget_banks_generic_directory():
+    """Test protocol-based generic writing to directory."""
+    from trec_auto_judge.nugget_data import (
+        NuggetBanks, NuggetBank, NuggetQuestion,
+        write_nugget_banks_generic, load_nugget_banks_from_directory_generic
+    )
+
+    # Create test data with multiple topics
+    bank1 = NuggetBank(query_id="t1", title_query="Topic 1")
+    bank1.add_nuggets(NuggetQuestion.from_lazy("t1", "Q1?", ["A1"]))
+
+    bank2 = NuggetBank(query_id="t2", title_query="Topic 2")
+    bank2.add_nuggets(NuggetQuestion.from_lazy("t2", "Q2?", ["A2"]))
+
+    banks = NuggetBanks.from_banks_list([bank1, bank2])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out_dir = Path(tmpdir) / "nuggets_dir"
+
+        # Write using generic function with directory format
+        write_nugget_banks_generic(banks, out_dir, format="directory")
+
+        # Check files created
+        assert (out_dir / "t1.json.gz").exists()
+        assert (out_dir / "t2.json.gz").exists()
+
+        # Load using generic function
+        loaded = load_nugget_banks_from_directory_generic(out_dir, NuggetBanks)
+        assert len(loaded.banks) == 2
+
+
+# ============ Protocol compliance tests ============
+
+def test_nugget_banks_protocol_compliance():
+    """Test that NuggetBanks satisfies NuggetBanksProtocol."""
+    from trec_auto_judge.nugget_data import NuggetBanks, NuggetBank
+    from trec_auto_judge.nugget_data.protocols import NuggetBanksProtocol, NuggetBankProtocol
+
+    # Check protocol compliance
+    assert isinstance(NuggetBanks(banks={}), NuggetBanksProtocol)
+
+    # Check _bank_model attribute
+    assert hasattr(NuggetBanks, "_bank_model")
+    assert NuggetBanks._bank_model is NuggetBank
+
+    # Check NuggetBank protocol compliance
+    bank = NuggetBank(query_id="test", title_query="Test")
+    assert isinstance(bank, NuggetBankProtocol)
+    assert bank.query_id == "test"
+
+
+def test_nuggetizer_nugget_banks_protocol_compliance():
+    """Test that NuggetizerNuggetBanks satisfies NuggetBanksProtocol."""
+    from trec_auto_judge.nugget_data import NuggetizerNuggetBanks, NuggetizerNuggetBank
+    from trec_auto_judge.nugget_data.protocols import NuggetBanksProtocol, NuggetBankProtocol
+
+    # Check protocol compliance
+    assert isinstance(NuggetizerNuggetBanks(banks={}), NuggetBanksProtocol)
+
+    # Check _bank_model attribute
+    assert hasattr(NuggetizerNuggetBanks, "_bank_model")
+    assert NuggetizerNuggetBanks._bank_model is NuggetizerNuggetBank
+
+    # Check NuggetizerNuggetBank protocol compliance
+    bank = NuggetizerNuggetBank(qid="test", query="Test Query")
+    assert isinstance(bank, NuggetBankProtocol)
+    assert bank.query_id == "test"  # Uses property
+
+
+def test_nuggetizer_nugget_banks_io():
+    """Test I/O for NuggetizerNuggetBanks using generic functions."""
+    from trec_auto_judge.nugget_data import (
+        NuggetizerNuggetBanks, NuggetizerNuggetBank,
+        load_nugget_banks_generic, write_nugget_banks_generic
+    )
+
+    # Create test data
+    bank = NuggetizerNuggetBank(qid="nuggetizer-1", query="Nuggetizer Query")
+    banks = NuggetizerNuggetBanks.from_banks_list([bank])
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "nuggetizer.jsonl"
+
+        # Write
+        write_nugget_banks_generic(banks, path)
+
+        # Read back
+        loaded = load_nugget_banks_generic(path, NuggetizerNuggetBanks)
+
+        assert len(loaded.banks) == 1
+        assert "nuggetizer-1" in loaded.banks
+        assert loaded.banks["nuggetizer-1"].query == "Nuggetizer Query"

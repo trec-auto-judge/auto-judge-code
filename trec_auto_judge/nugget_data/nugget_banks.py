@@ -7,7 +7,7 @@ Supports both NuggetBanks (autoargue) and NuggetizerNuggetBanks (autonuggetizer)
 import gzip
 import json
 from pathlib import Path
-from typing import Dict, List, Type, TypeVar, Union, TextIO
+from typing import ClassVar, Dict, List, Type, TypeVar, Union, TextIO
 
 from pydantic import BaseModel
 
@@ -23,7 +23,7 @@ class NuggetBanks(BaseModel):
         for qid, bank in banks.banks.items(): ...
     """
 
-    _bank_model = NuggetBank  # For protocol-based I/O
+    _bank_model: ClassVar[Type[NuggetBank]] = NuggetBank  # For protocol-based I/O
 
     format_version: str = "v3"
     banks: Dict[str, NuggetBank] = {}
