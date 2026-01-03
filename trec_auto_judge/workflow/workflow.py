@@ -28,10 +28,23 @@ class WorkflowMode(str, Enum):
     """Create nuggets first, then judge refines and emits more nuggets."""
 
 
+class NuggetFormat(str, Enum):
+    """Nugget bank format expected by the judge."""
+
+    AUTOARGUE = "autoargue"
+    """NuggetBanks format (trec_auto_judge.nugget_data)."""
+
+    NUGGETIZER = "nuggetizer"
+    """NuggetizerNuggetBanks format (autonuggetizer)."""
+
+
 class Workflow(BaseModel):
     """Workflow configuration loaded from workflow.yml."""
 
     mode: WorkflowMode = WorkflowMode.JUDGE_ONLY
+    nugget_format: NuggetFormat = NuggetFormat.AUTOARGUE
+    nugget_input: Optional[str] = None
+    nugget_output: Optional[str] = None
 
     @property
     def calls_create_nuggets(self) -> bool:

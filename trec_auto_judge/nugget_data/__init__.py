@@ -1,5 +1,7 @@
 """Nugget data models and I/O utilities for nugget-based evaluation."""
 
+from typing import Union
+
 from .nugget_data import (
     # Core models
     NuggetBank,
@@ -32,3 +34,11 @@ from .nugget_banks import (
     load_nugget_banks_from_directory,
     write_nugget_banks,
 )
+
+from .nuggetizer.nuggetizer_data import (
+    NuggetizerNuggetBank,
+    NuggetizerNuggetBanks,
+)
+
+# TODO: Define a Protocol/ABC for generic nugget bank type
+AnyNuggetBanks = Union[NuggetBanks, NuggetizerNuggetBanks]

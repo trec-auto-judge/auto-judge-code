@@ -4,7 +4,7 @@ from .io import load_runs_failsave
 from .request import load_requests_from_irds, load_requests_from_file
 from .llm import MinimaLlmConfig
 from .llm_resolver import ModelPreferences, ModelResolver, ModelResolutionError
-from .workflow import load_workflow, DEFAULT_WORKFLOW
+from .workflow import load_workflow, DEFAULT_WORKFLOW, NuggetFormat
 from .judge_runner import run_judge
 import click
 from . import AutoJudge
@@ -186,31 +186,61 @@ class ClickNuggetBanks(click.ParamType):
     """Click parameter type for loading nugget banks from file or directory."""
     name = "file-or-dir"
 
+    def _get_format(self, ctx) -> NuggetFormat:
+        """Get nugget format from context params or default to autoargue."""
+        if ctx and ctx.params:
+            fmt = ctx.params.get("nugget_format")
+            if fmt:
+                return NuggetFormat(fmt) if isinstance(fmt, str) else fmt
+        return NuggetFormat.AUTOARGUE
+
+    def _get_models(self, fmt: NuggetFormat):
+        """Get bank and container models for the given format."""
+        if fmt == NuggetFormat.NUGGETIZER:
+            from .nugget_data.nuggetizer.nuggetizer_data import (
+                NuggetizerNuggetBank, NuggetizerNuggetBanks
+            )
+            return NuggetizerNuggetBank, NuggetizerNuggetBanks
+        else:
+            from .nugget_data import NuggetBank, NuggetBanks
+            return NuggetBank, NuggetBanks
+
     def convert(self, value, param, ctx):
         if value is None:
             return None
 
-        from .nugget_data import NuggetBank, NuggetBanks
-        from .nugget_data.nugget_banks import (
-            load_nugget_banks_from_file,
-            load_nugget_banks_from_directory,
-        )
+        from .nugget_data.io import load_nugget_banks_from_file, load_nugget_banks_from_directory
 
+        fmt = self._get_format(ctx)
+        bank_model, container_model = self._get_models(fmt)
         path = Path(value)
 
         if path.is_file():
             try:
-                return load_nugget_banks_from_file(path, NuggetBank, NuggetBanks)
+                return load_nugget_banks_from_file(path, bank_model, container_model)
             except Exception as e:
-                self.fail(f"Could not load nugget banks from {value}: {e}", param, ctx)
+                self.fail(f"Could not load nugget banks ({fmt.value}) from {value}: {e}", param, ctx)
 
         if path.is_dir():
             try:
-                return load_nugget_banks_from_directory(path, NuggetBank, NuggetBanks)
+                return load_nugget_banks_from_directory(path, bank_model, container_model)
             except Exception as e:
-                self.fail(f"Could not load nugget banks from directory {value}: {e}", param, ctx)
+                self.fail(f"Could not load nugget banks ({fmt.value}) from directory {value}: {e}", param, ctx)
 
         self.fail(f"Path {value} is neither a file nor directory", param, ctx)
+
+
+def option_nugget_format():
+    """Nugget format CLI option (must be declared before --nugget-banks)."""
+    def decorator(func):
+        func = click.option(
+            "--nugget-format",
+            type=click.Choice([f.value for f in NuggetFormat], case_sensitive=False),
+            default=NuggetFormat.AUTOARGUE.value,
+            help="Nugget bank format: 'autoargue' (default) or 'nuggetizer'."
+        )(func)
+        return func
+    return decorator
 
 
 def option_nugget_banks():
@@ -338,17 +368,22 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         """AutoJudge command group."""
         pass
 
+    # TODO: Define a Protocol/ABC for generic nugget bank type that both
+    # NuggetBanks and NuggetizerNuggetBanks implement (e.g., HasBanksDict)
+
     @cli.command("judge")
     @option_rag_responses()
     @option_rag_topics()
     @option_nugget_banks()
+    @option_nugget_format()
     @option_llm_config()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
     @click.option("--store-nuggets", type=Path, help="Store nuggets if judge emits them.", required=False)
     def judge_cmd(
         rag_topics: Iterable[Request],
         rag_responses: Iterable[Report],
-        nugget_banks: Optional[NuggetBanks],
+        nugget_banks,  # Type depends on nugget_format
+        nugget_format: str,
         llm_config: Optional[Path],
         output: Path,
         store_nuggets: Optional[Path]
@@ -366,16 +401,19 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=False,
             modify_nuggets=True,  # Allow judge to emit nuggets
+            nugget_format=NuggetFormat(nugget_format),
         )
 
     @cli.command("nuggify")
     @option_rag_topics()
     @option_nugget_banks()
+    @option_nugget_format()
     @option_llm_config()
     @click.option("--store-nuggets", type=Path, help="Output nuggets file.", required=True)
     def nuggify_cmd(
         rag_topics: Iterable[Request],
-        nugget_banks: Optional[NuggetBanks],
+        nugget_banks,  # Type depends on nugget_format
+        nugget_format: str,
         llm_config: Optional[Path],
         store_nuggets: Path
     ):
@@ -392,6 +430,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=True,
             modify_nuggets=False,
+            nugget_format=NuggetFormat(nugget_format),
         )
 
         if result.nuggets is None:
@@ -403,13 +442,15 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_rag_responses()
     @option_rag_topics()
     @option_nugget_banks()
+    @option_nugget_format()
     @option_llm_config()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
     @click.option("--store-nuggets", type=Path, help="Optional: store created nuggets.", required=False)
     def nuggify_and_judge_cmd(
         rag_topics: Iterable[Request],
         rag_responses: Iterable[Report],
-        nugget_banks: Optional[NuggetBanks],
+        nugget_banks,  # Type depends on nugget_format
+        nugget_format: str,
         llm_config: Optional[Path],
         output: Path,
         store_nuggets: Optional[Path]
@@ -427,6 +468,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=True,
             modify_nuggets=True,  # Save after both create and judge
+            nugget_format=NuggetFormat(nugget_format),
         )
 
     @cli.command("run")
@@ -434,6 +476,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_rag_responses()
     @option_rag_topics()
     @option_nugget_banks()
+    @option_nugget_format()
     @option_llm_config()
     @click.option("--output", type=Path, help="Leaderboard output file.", required=True)
     @click.option("--store-nuggets", type=Path, help="Output path for nuggets.", required=False)
@@ -441,7 +484,8 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         workflow: Optional[Path],
         rag_topics: Iterable[Request],
         rag_responses: Iterable[Report],
-        nugget_banks: Optional[NuggetBanks],
+        nugget_banks,  # Type depends on nugget_format
+        nugget_format: str,
         llm_config: Optional[Path],
         output: Path,
         store_nuggets: Optional[Path]
@@ -451,6 +495,9 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         if workflow:
             wf = load_workflow(workflow)
             click.echo(f"Loaded workflow: {wf.mode.value}", err=True)
+            # Use workflow's nugget_format if CLI didn't override default
+            if nugget_format == NuggetFormat.AUTOARGUE.value and wf.nugget_format:
+                nugget_format = wf.nugget_format.value
         else:
             wf = DEFAULT_WORKFLOW
             click.echo(f"Using default workflow: {wf.mode.value}", err=True)
@@ -467,6 +514,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=wf.calls_create_nuggets,
             modify_nuggets=wf.judge_emits_nuggets,
+            nugget_format=NuggetFormat(nugget_format),
         )
 
         click.echo(f"Done. Leaderboard written to {output}", err=True)
