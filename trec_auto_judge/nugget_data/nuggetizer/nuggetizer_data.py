@@ -56,6 +56,11 @@ class NuggetizerNuggetBank(BaseModel):
     full_query: Any = None
     nuggets: List[NuggetizerNugget] = []
 
+    @property
+    def query_id(self) -> str:
+        """Canonical identifier for the topic/query (alias for qid)."""
+        return self.qid
+
 
 class NuggetizerNuggetBanks(BaseModel):
     """Container for multiple Nuggetizer NuggetBanks, keyed by qid."""

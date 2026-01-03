@@ -40,5 +40,10 @@ from .nuggetizer.nuggetizer_data import (
     NuggetizerNuggetBanks,
 )
 
-# TODO: Define a Protocol/ABC for generic nugget bank type
+from .protocols import (
+    NuggetBankProtocol,
+    NuggetBanksProtocol,
+)
+
+# Type alias for backwards compatibility (prefer NuggetBanksProtocol for new code)
 AnyNuggetBanks = Union[NuggetBanks, NuggetizerNuggetBanks]
