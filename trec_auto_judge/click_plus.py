@@ -4,7 +4,7 @@ from .io import load_runs_failsave
 from .request import load_requests_from_irds, load_requests_from_file
 from .llm import MinimaLlmConfig
 from .llm_resolver import ModelPreferences, ModelResolver, ModelResolutionError
-from .workflow import load_workflow, DEFAULT_WORKFLOW
+from .workflow import load_workflow
 from .judge_runner import run_judge
 import click
 from . import AutoJudge
@@ -331,6 +331,22 @@ class DefaultGroup(click.Group):
             args = [self.default_cmd_name] + list(args)
         return super().parse_args(ctx, args)
 
+    def get_command(self, ctx, cmd_name):
+        """Get command with helpful error message for invalid commands."""
+        cmd = super().get_command(ctx, cmd_name)
+        if cmd is None:
+            available = ", ".join(sorted(self.commands.keys()))
+            raise click.UsageError(
+                f"Unknown command '{cmd_name}'.\n\n"
+                f"Available commands: {available}\n\n"
+                f"Common usage patterns:\n"
+                f"  {ctx.info_name} run --rag-responses <dir> --rag-topics <file> --output <file>\n"
+                f"  {ctx.info_name} judge --rag-responses <dir> --nugget-banks <file> --output <file>\n"
+                f"  {ctx.info_name} nuggify --rag-responses <dir> --rag-topics <file> --store-nuggets <file>\n\n"
+                f"Run '{ctx.info_name} --help' for more information."
+            )
+        return cmd
+
     def format_help(self, ctx, formatter):
         """Format help to include default command options."""
         super().format_help(ctx, formatter)
@@ -458,8 +474,13 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             wf = load_workflow(workflow)
             click.echo(f"Loaded workflow: create_nuggets={wf.create_nuggets}, judge={wf.judge}", err=True)
         else:
-            wf = DEFAULT_WORKFLOW
-            click.echo(f"Using default workflow: create_nuggets={wf.create_nuggets}, judge={wf.judge}", err=True)
+            raise click.UsageError(
+                "No --workflow file provided.\n\n"
+                "The 'run' command requires a workflow.yml file to configure the judge pipeline.\n\n"
+                "Usage:\n"
+                f"  {cmd_name} run --workflow workflow.yml ...\n\n"
+                "Alternatively, use explicit subcommands."
+            )
 
         resolved_config = _resolve_llm_config(llm_config, submission)
 

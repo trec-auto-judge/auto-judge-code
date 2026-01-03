@@ -1,2 +1,3 @@
 # Rubric judge creates nuggets first, then judges using them
-mode: "nuggify-then-judge"
+create_nuggets: true   # Call create_nuggets() to generate/refine nuggets
+judge: true            # Call judge() to produce leaderboard/qrels

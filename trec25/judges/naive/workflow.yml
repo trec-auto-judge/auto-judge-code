@@ -1,2 +1,3 @@
 # Naive judge: no nuggets
-mode: "judge-only"
+create_nuggets: false
+judge: true

@@ -132,6 +132,8 @@ class RubricJudge(AutoJudge):
     3. Computes coverage score based on grade threshold
     """
 
+    nugget_banks_type: Type[NuggetBanksProtocol] = NuggetBanks
+    
     def __init__(self, grade_threshold: int = 3):
         """
         Args:
@@ -142,11 +144,11 @@ class RubricJudge(AutoJudge):
     def create_nuggets(
         self,
         rag_responses: Sequence[Report],
-        rag_topics: Sequence["Request"],
+        rag_topics: Sequence[Request],
         llm_config: MinimaLlmConfig,
-        nugget_banks: Optional["NuggetBanks"] = None,
+        nugget_banks: Optional[NuggetBanks] = None,
         **kwargs
-    ) -> Optional["NuggetBanks"]:
+    ) -> Optional[NuggetBanks]:
         """Generate nugget questions for each topic using LLM."""
 
         # Prepare generation data
