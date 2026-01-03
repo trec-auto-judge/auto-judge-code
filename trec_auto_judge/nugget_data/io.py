@@ -155,3 +155,73 @@ def make_io_functions(
         _write_nugget_banks(nugget_banks, out, format)
 
     return load_from_file, load_from_directory, write_banks
+
+
+# =============================================================================
+# Protocol-based generic I/O (uses _bank_model from NuggetBanksProtocol)
+# =============================================================================
+
+from .protocols import NuggetBanksProtocol
+
+P = TypeVar("P", bound=NuggetBanksProtocol)
+
+
+def load_nugget_banks_generic(
+    source: Union[str, Path],
+    container_type: Type[P],
+) -> P:
+    """
+    Load nugget banks using protocol-based type discovery.
+
+    Args:
+        source: Path to JSON, JSONL, or gzipped file
+        container_type: Container class (must have _bank_model attribute)
+
+    Returns:
+        Loaded container instance
+
+    Example:
+        banks = load_nugget_banks_generic("nuggets.jsonl", NuggetBanks)
+        banks = load_nugget_banks_generic("nuggets.jsonl", NuggetizerNuggetBanks)
+    """
+    bank_model = container_type._bank_model
+    return _load_nugget_banks_from_file(source, bank_model, container_type)
+
+
+def load_nugget_banks_from_directory_generic(
+    directory: Union[str, Path],
+    container_type: Type[P],
+) -> P:
+    """
+    Load nugget banks from directory using protocol-based type discovery.
+
+    Args:
+        directory: Directory containing per-topic files
+        container_type: Container class (must have _bank_model attribute)
+
+    Returns:
+        Loaded container instance
+    """
+    bank_model = container_type._bank_model
+    return _load_nugget_banks_from_directory(directory, bank_model, container_type)
+
+
+def write_nugget_banks_generic(
+    banks: NuggetBanksProtocol,
+    out: Union[str, Path],
+    format: str = "jsonl",
+) -> None:
+    """
+    Write nugget banks using protocol-based type discovery.
+
+    Derives types from the instance - no need to specify format.
+
+    Args:
+        banks: Any NuggetBanksProtocol instance
+        out: Output path
+        format: "jsonl" (default) or "directory"
+
+    Example:
+        write_nugget_banks_generic(banks, "output.jsonl")
+    """
+    _write_nugget_banks(banks, out, format)

@@ -65,6 +65,8 @@ class NuggetizerNuggetBank(BaseModel):
 class NuggetizerNuggetBanks(BaseModel):
     """Container for multiple Nuggetizer NuggetBanks, keyed by qid."""
 
+    _bank_model = NuggetizerNuggetBank  # For protocol-based I/O
+
     format_version: str = "v4"
     banks: Dict[str, NuggetizerNuggetBank] = {}
 

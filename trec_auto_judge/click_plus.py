@@ -194,36 +194,37 @@ class ClickNuggetBanks(click.ParamType):
                 return NuggetFormat(fmt) if isinstance(fmt, str) else fmt
         return NuggetFormat.AUTOARGUE
 
-    def _get_models(self, fmt: NuggetFormat):
-        """Get bank and container models for the given format."""
+    def _get_container_type(self, fmt: NuggetFormat):
+        """Get container type for the given format (uses _bank_model for loading)."""
         if fmt == NuggetFormat.NUGGETIZER:
-            from .nugget_data.nuggetizer.nuggetizer_data import (
-                NuggetizerNuggetBank, NuggetizerNuggetBanks
-            )
-            return NuggetizerNuggetBank, NuggetizerNuggetBanks
+            from .nugget_data.nuggetizer.nuggetizer_data import NuggetizerNuggetBanks
+            return NuggetizerNuggetBanks
         else:
-            from .nugget_data import NuggetBank, NuggetBanks
-            return NuggetBank, NuggetBanks
+            from .nugget_data import NuggetBanks
+            return NuggetBanks
 
     def convert(self, value, param, ctx):
         if value is None:
             return None
 
-        from .nugget_data.io import load_nugget_banks_from_file, load_nugget_banks_from_directory
+        from .nugget_data.io import (
+            load_nugget_banks_generic,
+            load_nugget_banks_from_directory_generic,
+        )
 
         fmt = self._get_format(ctx)
-        bank_model, container_model = self._get_models(fmt)
+        container_type = self._get_container_type(fmt)
         path = Path(value)
 
         if path.is_file():
             try:
-                return load_nugget_banks_from_file(path, bank_model, container_model)
+                return load_nugget_banks_generic(path, container_type)
             except Exception as e:
                 self.fail(f"Could not load nugget banks ({fmt.value}) from {value}: {e}", param, ctx)
 
         if path.is_dir():
             try:
-                return load_nugget_banks_from_directory(path, bank_model, container_model)
+                return load_nugget_banks_from_directory_generic(path, container_type)
             except Exception as e:
                 self.fail(f"Could not load nugget banks ({fmt.value}) from directory {value}: {e}", param, ctx)
 
@@ -368,9 +369,6 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         """AutoJudge command group."""
         pass
 
-    # TODO: Define a Protocol/ABC for generic nugget bank type that both
-    # NuggetBanks and NuggetizerNuggetBanks implement (e.g., HasBanksDict)
-
     @cli.command("judge")
     @option_rag_responses()
     @option_rag_topics()
@@ -401,7 +399,6 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=False,
             modify_nuggets=True,  # Allow judge to emit nuggets
-            nugget_format=NuggetFormat(nugget_format),
         )
 
     @cli.command("nuggify")
@@ -430,7 +427,6 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=True,
             modify_nuggets=False,
-            nugget_format=NuggetFormat(nugget_format),
         )
 
         if result.nuggets is None:
@@ -468,7 +464,6 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=True,
             modify_nuggets=True,  # Save after both create and judge
-            nugget_format=NuggetFormat(nugget_format),
         )
 
     @cli.command("run")
@@ -514,7 +509,6 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             store_nuggets_path=store_nuggets,
             create_nuggets=wf.calls_create_nuggets,
             modify_nuggets=wf.judge_emits_nuggets,
-            nugget_format=NuggetFormat(nugget_format),
         )
 
         click.echo(f"Done. Leaderboard written to {output}", err=True)

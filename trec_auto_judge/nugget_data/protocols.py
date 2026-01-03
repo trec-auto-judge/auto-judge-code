@@ -1,6 +1,6 @@
 """Protocols for generic nugget bank types."""
 
-from typing import Dict, List, Protocol, runtime_checkable
+from typing import ClassVar, Dict, List, Protocol, Type, runtime_checkable
 
 
 @runtime_checkable
@@ -22,6 +22,9 @@ class NuggetBanksProtocol(Protocol):
 
     Implementations: NuggetBanks, NuggetizerNuggetBanks
     """
+
+    _bank_model: ClassVar[Type[NuggetBankProtocol]]
+    """The bank model class for this container type."""
 
     banks: Dict[str, NuggetBankProtocol]
 

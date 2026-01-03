@@ -23,6 +23,8 @@ class NuggetBanks(BaseModel):
         for qid, bank in banks.banks.items(): ...
     """
 
+    _bank_model = NuggetBank  # For protocol-based I/O
+
     format_version: str = "v3"
     banks: Dict[str, NuggetBank] = {}
 
