@@ -217,6 +217,15 @@ class MinimaLlmConfig:
     cache_dir: Optional[str] = None  # None = disabled
 
     # ----------------------------
+    # Config modification
+    # ----------------------------
+
+    def with_model(self, model: str) -> "MinimaLlmConfig":
+        """Return a new config with the model replaced."""
+        from dataclasses import replace
+        return replace(self, model=model)
+
+    # ----------------------------
     # Backward compatibility properties
     # ----------------------------
 

@@ -198,6 +198,27 @@ User-defined parameters are also available: `{top_k}` expands to the value of `t
 - **Parameters**: `snake_case` (e.g., `top_k`, `extraction_style`)
 - **Variant/sweep names**: `train-case` (e.g., `ans-r`, `top-k-sweep`)
 
+### Framework-Consumed Settings
+
+Some settings are consumed by the framework and not passed to AutoJudge methods:
+
+| Setting | Description |
+|---------|-------------|
+| `llm_model` | Override the model in `llm_config`. Applies to both phases. |
+
+Example - run the same judge with different models:
+
+```yaml
+settings:
+  llm_model: "gpt-4o"
+
+sweeps:
+  model-comparison:
+    llm_model: ["gpt-4o", "claude-3-opus", "llama-3.1-70b"]
+```
+
+The `llm_model` setting overrides `llm_config.model` (from `llm-config.yml` or environment). This allows organizers to sweep over models without modifying the judge's LLM configuration file.
+
 ## Variants
 
 Define named configurations that override base settings:
@@ -336,6 +357,25 @@ model_preferences:
   - "gpt-4o"
   - "claude-3-opus"
 ```
+
+## Output Files
+
+Given a `filebase` setting (e.g., `filebase: "rubric"`), the framework generates:
+
+| Output | Filename |
+|--------|----------|
+| Nugget banks | `{filebase}.nuggets.jsonl` |
+| Leaderboard | `{filebase}.judgment.json` |
+| Qrels | `{filebase}.judgment.qrels` |
+
+Example with `filebase: "rubric"`:
+```
+rubric.nuggets.jsonl
+rubric.judgment.json
+rubric.judgment.qrels
+```
+
+If `filebase` already has an extension (`.json`, `.jsonl`), it's used as-is.
 
 ## How Nugget Types Flow
 

@@ -315,6 +315,59 @@ def _resolve_llm_config(llm_config_path: Optional[Path], submission: bool = Fals
     return MinimaLlmConfig.from_env()
 
 
+def _validate_llm_model_for_submission(
+    settings: dict,
+    submission: bool,
+) -> dict:
+    """
+    Validate llm_model setting against available models in submission mode.
+
+    In submission mode, if llm_model is set but not available in the organizer's
+    configuration, it is removed with a warning.
+
+    Args:
+        settings: Settings dict (may contain 'llm_model')
+        submission: Whether we're in submission mode
+
+    Returns:
+        Settings dict, possibly with llm_model removed
+    """
+    if not submission:
+        return settings
+
+    llm_model = settings.get("llm_model")
+    if not llm_model:
+        return settings
+
+    # Get available models from organizer configuration
+    try:
+        resolver = ModelResolver.from_env()
+        available = resolver.available
+        enabled_models = available.get_enabled_models()
+
+        # Check if model is available (directly or via alias)
+        canonical = available.resolve_alias(llm_model)
+        if canonical in available.models:
+            return settings  # Model is available, keep it
+
+        # Model not available - warn and remove
+        click.echo(
+            f"Warning: llm_model '{llm_model}' is not available in submission mode. "
+            f"Available models: {enabled_models}. Ignoring llm_model setting.",
+            err=True,
+        )
+        # Return settings without llm_model
+        return {k: v for k, v in settings.items() if k != "llm_model"}
+
+    except Exception as e:
+        click.echo(
+            f"Warning: Could not validate llm_model against available models: {e}. "
+            f"Ignoring llm_model setting.",
+            err=True,
+        )
+        return {k: v for k, v in settings.items() if k != "llm_model"}
+
+
 class DefaultGroup(click.Group):
     """Click group that invokes a default subcommand when none is specified."""
 
@@ -516,6 +569,9 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         for config in configs:
             click.echo(f"\n=== Running configuration: {config.name} ===", err=True)
 
+            # Validate llm_model against available models in submission mode
+            validated_settings = _validate_llm_model_for_submission(config.settings, submission)
+
             # Determine output paths: CLI args take precedence, then resolved config
             nugget_output_path = store_nuggets or config.nugget_output_path
             judge_output_path = output  # CLI --output is required
@@ -543,7 +599,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
                 store_nuggets_path=nugget_output_path,
                 do_create_nuggets=wf.create_nuggets,
                 do_judge=wf.judge,
-                settings=config.settings,
+                settings=validated_settings,
                 nugget_settings=config.nugget_settings,
                 judge_settings=config.judge_settings,
                 # Lifecycle flags

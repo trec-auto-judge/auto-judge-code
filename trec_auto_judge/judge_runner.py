@@ -30,6 +30,45 @@ class JudgeResult:
     nuggets: Optional[NuggetBanksProtocol]
 
 
+# Framework-consumed settings (extracted before passing to AutoJudge)
+FRAMEWORK_SETTINGS = frozenset({"llm_model"})
+
+
+def _strip_framework_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    """Remove framework-consumed settings before passing to AutoJudge."""
+    return {k: v for k, v in settings.items() if k not in FRAMEWORK_SETTINGS}
+
+
+def _resolve_nugget_file_path(filebase: Path) -> Path:
+    """
+    Resolve nugget file path from filebase.
+
+    If filebase already has a recognized extension (.jsonl, .json), use as-is.
+    Otherwise, append .nuggets.jsonl extension.
+    """
+    if filebase.suffix in (".jsonl", ".json"):
+        return filebase
+    return filebase.parent / f"{filebase.name}.nuggets.jsonl"
+
+
+def _resolve_judgment_file_paths(filebase: Path) -> tuple[Path, Path]:
+    """
+    Resolve leaderboard and qrels file paths from filebase.
+
+    Returns:
+        Tuple of (leaderboard_path, qrels_path):
+        - {filebase}.judgment.json
+        - {filebase}.judgment.qrels
+    """
+    if filebase.suffix in (".json",):
+        # Already has extension, derive qrels from it
+        return filebase, filebase.with_suffix(".qrels")
+    return (
+        filebase.parent / f"{filebase.name}.judgment.json",
+        filebase.parent / f"{filebase.name}.judgment.qrels",
+    )
+
+
 def run_judge(
     auto_judge,
     rag_responses: Iterable[Report],
@@ -75,23 +114,32 @@ def run_judge(
     Returns:
         JudgeResult with leaderboard, qrels, and final nuggets
     """
+    # Extract framework-consumed settings
+    effective_llm_config = llm_config
+    if settings and "llm_model" in settings:
+        effective_llm_config = llm_config.with_model(settings["llm_model"])
+        print(f"[judge_runner] Model override from settings: {effective_llm_config.model}", file=sys.stderr)
+
     current_nuggets = nugget_banks
     leaderboard = None
     qrels = None
 
+    # Resolve nugget file path (add .nuggets.jsonl extension if needed)
+    nugget_file_path = _resolve_nugget_file_path(store_nuggets_path) if store_nuggets_path else None
+
     # Step 1: Resolve nuggets (auto-load or create)
     if do_create_nuggets:
         # Check if we can auto-load existing nuggets
-        if store_nuggets_path and store_nuggets_path.exists() and not force_recreate_nuggets:
+        if nugget_file_path and nugget_file_path.exists() and not force_recreate_nuggets:
             # Auto-load existing nuggets
-            print(f"[judge_runner] Loading existing nuggets: {store_nuggets_path}", file=sys.stderr)
+            print(f"[judge_runner] Loading existing nuggets: {nugget_file_path}", file=sys.stderr)
             if nugget_banks_type:
-                current_nuggets = load_nugget_banks_generic(store_nuggets_path, nugget_banks_type)
+                current_nuggets = load_nugget_banks_generic(nugget_file_path, nugget_banks_type)
             else:
                 # Try to get type from auto_judge
                 nbt = getattr(auto_judge, "nugget_banks_type", None)
                 if nbt:
-                    current_nuggets = load_nugget_banks_generic(store_nuggets_path, nbt)
+                    current_nuggets = load_nugget_banks_generic(nugget_file_path, nbt)
                 else:
                     raise ValueError(
                         f"Cannot load nuggets: no nugget_banks_type specified. "
@@ -99,7 +147,7 @@ def run_judge(
                     )
         else:
             # Create nuggets
-            nugget_kwargs = nugget_settings or settings or {}
+            nugget_kwargs = _strip_framework_settings(nugget_settings or settings or {})
             if nugget_kwargs:
                 print(f"[judge_runner] create_nuggets settings: {nugget_kwargs}", file=sys.stderr)
 
@@ -109,7 +157,7 @@ def run_judge(
             current_nuggets = auto_judge.create_nuggets(
                 rag_responses=responses_for_nuggets,
                 rag_topics=rag_topics,
-                llm_config=llm_config,
+                llm_config=effective_llm_config,
                 nugget_banks=nugget_banks,
                 **nugget_kwargs,
             )
@@ -117,20 +165,20 @@ def run_judge(
             if current_nuggets is not None:
                 NuggetBanksVerification(current_nuggets, rag_topics).all()
                 # Save immediately for crash recovery
-                if store_nuggets_path:
-                    write_nugget_banks_generic(current_nuggets, store_nuggets_path)
-                    print(f"[judge_runner] Nuggets saved to: {store_nuggets_path}", file=sys.stderr)
-    elif not do_create_nuggets and store_nuggets_path and store_nuggets_path.exists():
+                if nugget_file_path:
+                    write_nugget_banks_generic(current_nuggets, nugget_file_path)
+                    print(f"[judge_runner] Nuggets saved to: {nugget_file_path}", file=sys.stderr)
+    elif not do_create_nuggets and nugget_file_path and nugget_file_path.exists():
         # do_create_nuggets=False but file exists - load it
-        print(f"[judge_runner] Loading nuggets (create_nuggets=false): {store_nuggets_path}", file=sys.stderr)
+        print(f"[judge_runner] Loading nuggets (create_nuggets=false): {nugget_file_path}", file=sys.stderr)
         nbt = nugget_banks_type or getattr(auto_judge, "nugget_banks_type", None)
         if nbt:
-            current_nuggets = load_nugget_banks_generic(store_nuggets_path, nbt)
+            current_nuggets = load_nugget_banks_generic(nugget_file_path, nbt)
         # If no type available and no nugget_banks passed, current_nuggets stays as nugget_banks
 
     # Step 2: Judge if requested
     if do_judge:
-        judge_kwargs = judge_settings or settings or {}
+        judge_kwargs = _strip_framework_settings(judge_settings or settings or {})
         if judge_kwargs:
             print(f"[judge_runner] judge settings: {judge_kwargs}", file=sys.stderr)
 
@@ -140,7 +188,7 @@ def run_judge(
         leaderboard, qrels = auto_judge.judge(
             rag_responses=rag_responses,
             rag_topics=rag_topics,
-            llm_config=llm_config,
+            llm_config=effective_llm_config,
             nugget_banks=nuggets_for_judge,
             **judge_kwargs,
         )
@@ -170,9 +218,14 @@ def _write_outputs(
     """Verify and write leaderboard and qrels."""
     topic_ids = [t.request_id for t in rag_topics]
 
+    # Resolve output paths from filebase
+    leaderboard_path, qrels_path = _resolve_judgment_file_paths(output_path)
+
     LeaderboardVerification(leaderboard, expected_topic_ids=topic_ids).all()
-    leaderboard.write(output_path)
+    leaderboard.write(leaderboard_path)
+    print(f"[judge_runner] Leaderboard saved to: {leaderboard_path}", file=sys.stderr)
 
     if qrels is not None:
         QrelsVerification(qrels, expected_topic_ids=topic_ids).all()
-        write_qrel_file(qrel_out_file=output_path.with_suffix(".qrels"), qrels=qrels)
+        write_qrel_file(qrel_out_file=qrels_path, qrels=qrels)
+        print(f"[judge_runner] Qrels saved to: {qrels_path}", file=sys.stderr)
