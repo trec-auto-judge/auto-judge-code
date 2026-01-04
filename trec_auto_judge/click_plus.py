@@ -525,6 +525,14 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             if judge_output_path:
                 click.echo(f"Judge output: {judge_output_path}", err=True)
 
+            # Determine nugget_banks_type: CLI workflow takes precedence, then auto_judge attribute
+            nugget_banks_type = wf.nugget_banks_type
+            if not nugget_banks_type or nugget_banks_type == "trec_auto_judge.nugget_data.NuggetBanks":
+                # Check auto_judge for a more specific type
+                auto_judge_type = getattr(auto_judge, "nugget_banks_type", None)
+                if auto_judge_type:
+                    nugget_banks_type = auto_judge_type
+
             run_judge(
                 auto_judge=auto_judge,
                 rag_responses=rag_responses,
@@ -538,6 +546,11 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
                 settings=config.settings,
                 nugget_settings=config.nugget_settings,
                 judge_settings=config.judge_settings,
+                # Lifecycle flags
+                force_recreate_nuggets=force_recreate_nuggets or wf.force_recreate_nuggets,
+                nugget_depends_on_responses=wf.nugget_depends_on_responses,
+                judge_uses_nuggets=wf.judge_uses_nuggets,
+                nugget_banks_type=nugget_banks_type,
             )
 
             click.echo(f"Done configuration: {config.name}", err=True)

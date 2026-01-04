@@ -155,6 +155,134 @@ create_nuggets: true
 judge: false
 ```
 
+## Settings and Parameters
+
+Pass hyperparameters to `create_nuggets()` and `judge()` via settings dicts:
+
+```yaml
+create_nuggets: true
+judge: true
+
+# Shared settings (passed to both phases as fallback)
+settings:
+  filebase: "{_name}"
+  top_k: 20
+
+# Phase-specific settings (override shared settings)
+nugget_settings:
+  extraction_style: "thorough"
+
+judge_settings:
+  threshold: 0.5
+```
+
+Settings are passed to AutoJudge methods as `**kwargs`:
+- `judge()` receives `**(judge_settings or settings or {})`
+- `create_nuggets()` receives `**(nugget_settings or settings or {})`
+
+### Built-in Variables
+
+Use `{variable}` syntax for template substitution in string values:
+
+| Variable | Description |
+|----------|-------------|
+| `{_name}` | Configuration name ("default", variant name, or sweep name) |
+| `{_nugget_filebase}` | Resolved nugget filebase (available in judge_settings) |
+
+User-defined parameters are also available: `{top_k}` expands to the value of `top_k`.
+
+**Note**: Parameters starting with `_` are reserved for built-ins and will cause a validation error.
+
+### Naming Conventions
+
+- **Parameters**: `snake_case` (e.g., `top_k`, `extraction_style`)
+- **Variant/sweep names**: `train-case` (e.g., `ans-r`, `top-k-sweep`)
+
+## Variants
+
+Define named configurations that override base settings:
+
+```yaml
+create_nuggets: true
+judge: true
+
+settings:
+  threshold: 0.5
+  filebase: "{_name}"
+
+variants:
+  strict:
+    threshold: 0.8
+
+  ans-r:
+    prompt: "AnswerR"
+    threshold: 0.7
+    judge_settings:
+      use_citations: true
+```
+
+Run a specific variant:
+```bash
+./judge.py run --workflow workflow.yml --variant strict ...
+```
+
+Run all variants:
+```bash
+./judge.py run --workflow workflow.yml --all-variants ...
+```
+
+## Parameter Sweeps
+
+Define parameter combinations for grid search:
+
+```yaml
+sweeps:
+  top-k-sweep:
+    top_k: [10, 20, 50]
+
+  threshold-grid:
+    top_k: [10, 20]
+    threshold: [0.3, 0.5, 0.8]
+```
+
+Run a sweep (executes all combinations):
+```bash
+./judge.py run --workflow workflow.yml --sweep threshold-grid ...
+```
+
+The `threshold-grid` sweep produces 6 configurations (2 x 3 cartesian product).
+
+## Lifecycle Flags
+
+Control nugget creation and usage behavior:
+
+```yaml
+create_nuggets: true
+judge: true
+
+# Lifecycle flags
+nugget_depends_on_responses: true   # Pass responses to create_nuggets() (default: true)
+judge_uses_nuggets: true            # Pass nuggets to judge() (default: true)
+force_recreate_nuggets: false       # Recreate even if file exists (default: false)
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `nugget_depends_on_responses` | `true` | If false, `create_nuggets()` receives `rag_responses=None` |
+| `judge_uses_nuggets` | `true` | If false, `judge()` receives `nugget_banks=None` |
+| `force_recreate_nuggets` | `false` | If true, recreate nuggets even if output file exists |
+
+### Auto-Load Behavior
+
+When `create_nuggets: true` and a nugget file already exists:
+- **Default**: Load existing nuggets instead of recreating (saves LLM calls)
+- **With `--force-recreate-nuggets`**: Recreate nuggets anyway
+
+CLI flag overrides workflow setting:
+```bash
+./judge.py run --workflow workflow.yml --force-recreate-nuggets ...
+```
+
 ## Running the Judge
 
 ### CLI Subcommands

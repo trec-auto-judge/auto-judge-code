@@ -13,6 +13,7 @@ from .nugget_data import (
     NuggetBanksProtocol,
     NuggetBanksVerification,
     write_nugget_banks_generic,
+    load_nugget_banks_generic,
 )
 from .qrels.qrels import Qrels, QrelsVerification, write_qrel_file
 from .leaderboard.leaderboard import Leaderboard, LeaderboardVerification
@@ -43,6 +44,12 @@ def run_judge(
     settings: Optional[dict[str, Any]] = None,
     nugget_settings: Optional[dict[str, Any]] = None,
     judge_settings: Optional[dict[str, Any]] = None,
+    # Lifecycle flags
+    force_recreate_nuggets: bool = False,
+    nugget_depends_on_responses: bool = True,
+    judge_uses_nuggets: bool = True,
+    # NuggetBanks type for loading (dotted import path)
+    nugget_banks_type: Optional[str] = None,
 ) -> JudgeResult:
     """
     Execute judge workflow with nugget lifecycle management.
@@ -60,6 +67,10 @@ def run_judge(
         settings: Shared settings dict passed to both phases (fallback)
         nugget_settings: Settings dict passed to create_nuggets() (overrides settings)
         judge_settings: Settings dict passed to judge() (overrides settings)
+        force_recreate_nuggets: If True, recreate even if file exists
+        nugget_depends_on_responses: If True, pass responses to create_nuggets()
+        judge_uses_nuggets: If True, pass nuggets to judge()
+        nugget_banks_type: Dotted import path for NuggetBanks class (for loading)
 
     Returns:
         JudgeResult with leaderboard, qrels, and final nuggets
@@ -68,35 +79,69 @@ def run_judge(
     leaderboard = None
     qrels = None
 
-    # Step 1: Create/refine nuggets if requested
+    # Step 1: Resolve nuggets (auto-load or create)
     if do_create_nuggets:
-        nugget_kwargs = nugget_settings or settings or {}
-        if nugget_kwargs:
-            print(f"[judge_runner] create_nuggets settings: {nugget_kwargs}", file=sys.stderr)
-        current_nuggets = auto_judge.create_nuggets(
-            rag_responses=rag_responses,
-            rag_topics=rag_topics,
-            llm_config=llm_config,
-            nugget_banks=nugget_banks,
-            **nugget_kwargs,
-        )
-        # Verify created nuggets
-        if current_nuggets is not None:
-            NuggetBanksVerification(current_nuggets, rag_topics).all()
-            # Save immediately for crash recovery
-            if store_nuggets_path:
-                write_nugget_banks_generic(current_nuggets, store_nuggets_path)
+        # Check if we can auto-load existing nuggets
+        if store_nuggets_path and store_nuggets_path.exists() and not force_recreate_nuggets:
+            # Auto-load existing nuggets
+            print(f"[judge_runner] Loading existing nuggets: {store_nuggets_path}", file=sys.stderr)
+            if nugget_banks_type:
+                current_nuggets = load_nugget_banks_generic(store_nuggets_path, nugget_banks_type)
+            else:
+                # Try to get type from auto_judge
+                nbt = getattr(auto_judge, "nugget_banks_type", None)
+                if nbt:
+                    current_nuggets = load_nugget_banks_generic(store_nuggets_path, nbt)
+                else:
+                    raise ValueError(
+                        f"Cannot load nuggets: no nugget_banks_type specified. "
+                        f"Provide nugget_banks_type or use --force-recreate-nuggets."
+                    )
+        else:
+            # Create nuggets
+            nugget_kwargs = nugget_settings or settings or {}
+            if nugget_kwargs:
+                print(f"[judge_runner] create_nuggets settings: {nugget_kwargs}", file=sys.stderr)
+
+            # Pass responses based on nugget_depends_on_responses flag
+            responses_for_nuggets = rag_responses if nugget_depends_on_responses else None
+
+            current_nuggets = auto_judge.create_nuggets(
+                rag_responses=responses_for_nuggets,
+                rag_topics=rag_topics,
+                llm_config=llm_config,
+                nugget_banks=nugget_banks,
+                **nugget_kwargs,
+            )
+            # Verify created nuggets
+            if current_nuggets is not None:
+                NuggetBanksVerification(current_nuggets, rag_topics).all()
+                # Save immediately for crash recovery
+                if store_nuggets_path:
+                    write_nugget_banks_generic(current_nuggets, store_nuggets_path)
+                    print(f"[judge_runner] Nuggets saved to: {store_nuggets_path}", file=sys.stderr)
+    elif not do_create_nuggets and store_nuggets_path and store_nuggets_path.exists():
+        # do_create_nuggets=False but file exists - load it
+        print(f"[judge_runner] Loading nuggets (create_nuggets=false): {store_nuggets_path}", file=sys.stderr)
+        nbt = nugget_banks_type or getattr(auto_judge, "nugget_banks_type", None)
+        if nbt:
+            current_nuggets = load_nugget_banks_generic(store_nuggets_path, nbt)
+        # If no type available and no nugget_banks passed, current_nuggets stays as nugget_banks
 
     # Step 2: Judge if requested
     if do_judge:
         judge_kwargs = judge_settings or settings or {}
         if judge_kwargs:
             print(f"[judge_runner] judge settings: {judge_kwargs}", file=sys.stderr)
+
+        # Pass nuggets based on judge_uses_nuggets flag
+        nuggets_for_judge = current_nuggets if judge_uses_nuggets else None
+
         leaderboard, qrels = auto_judge.judge(
             rag_responses=rag_responses,
             rag_topics=rag_topics,
             llm_config=llm_config,
-            nugget_banks=current_nuggets,
+            nugget_banks=nuggets_for_judge,
             **judge_kwargs,
         )
 
