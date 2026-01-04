@@ -1,4 +1,6 @@
 # Rubric judge creates nuggets first, then judges using them
 create_nuggets: true   # Call create_nuggets() to generate/refine nuggets
 judge: true            # Call judge() to produce leaderboard/qrels
-nugget_output: rubric_nugget.jsonl  # Default path for storing generated nuggets
+
+settings:
+  filebase: "rubric"   # Output: rubric.nuggets.jsonl, rubric.qrels, etc.
