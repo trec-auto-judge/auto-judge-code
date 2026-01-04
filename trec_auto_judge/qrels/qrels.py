@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, TypeVar, Generic, Callable, Iterable, Sequence, Union
 
+from trec_auto_judge.utils import format_preview
+
 
 def doc_id_md5(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
@@ -130,10 +132,8 @@ class QrelsVerification:
         missing = expected - seen
         if missing:
             missing_list = sorted(missing)
-            preview = ", ".join(missing_list[:10])
-            more = f" ... ({len(missing_list) - 10} more)" if len(missing_list) > 10 else ""
             raise QrelsVerificationError(
-                f"Missing qrels for {len(missing_list)} topic(s): {preview}{more}"
+                f"Missing qrels for {len(missing_list)} topic(s): {format_preview(missing_list)}"
             )
 
         return self
@@ -150,10 +150,8 @@ class QrelsVerification:
 
         if extras:
             extra_list = sorted(extras)
-            preview = ", ".join(extra_list[:10])
-            more = f" ... ({len(extra_list) - 10} more)" if len(extra_list) > 10 else ""
             raise QrelsVerificationError(
-                f"Qrels for {len(extra_list)} unexpected topic(s): {preview}{more}"
+                f"Qrels for {len(extra_list)} unexpected topic(s): {format_preview(extra_list)}"
             )
 
         return self

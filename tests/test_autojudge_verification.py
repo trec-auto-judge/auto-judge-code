@@ -242,40 +242,40 @@ class TestRubricJudgeVerification:
     def test_judge_leaderboard_complete_measures(self, judge_results):
         """Verify every leaderboard entry has all measures."""
         LeaderboardVerification(
-            judge_results.leaderboard, warn=False
+            judge_results.leaderboard, on_missing="error", warn=False
         ).complete_measures()
 
     def test_judge_leaderboard_complete_measures_excluding_all_row(self, judge_results):
         """Verify per-topic entries have all measures (excluding 'all' row)."""
         LeaderboardVerification(
-            judge_results.leaderboard
+            judge_results.leaderboard, on_missing="error"
         ).complete_measures(include_all_row=False)
 
     def test_judge_leaderboard_same_topics_per_run(self, judge_results):
         """Verify all runs have the same set of topics."""
         LeaderboardVerification(
-            judge_results.leaderboard, warn=False
+            judge_results.leaderboard, on_missing="error", warn=False
         ).same_topics_per_run()
 
     def test_judge_leaderboard_complete_topics(self, judge_results, sample_topics):
         """Verify every expected topic has leaderboard entries."""
         topic_ids = [t.request_id for t in sample_topics]
         LeaderboardVerification(
-            judge_results.leaderboard, expected_topic_ids=topic_ids, warn=False
+            judge_results.leaderboard, on_missing="error", expected_topic_ids=topic_ids, warn=False
         ).complete_topics()
 
     def test_judge_leaderboard_no_extra_topics(self, judge_results, sample_topics):
         """Verify no leaderboard entries for unexpected topics."""
         topic_ids = [t.request_id for t in sample_topics]
         LeaderboardVerification(
-            judge_results.leaderboard, expected_topic_ids=topic_ids, warn=False
+            judge_results.leaderboard, on_missing="error", expected_topic_ids=topic_ids, warn=False
         ).no_extra_topics()
 
     def test_judge_leaderboard_all_verification(self, judge_results, sample_topics):
         """Run all leaderboard verification checks."""
         topic_ids = [t.request_id for t in sample_topics]
         LeaderboardVerification(
-            judge_results.leaderboard, expected_topic_ids=topic_ids, warn=False
+            judge_results.leaderboard, on_missing="error", expected_topic_ids=topic_ids, warn=False
         ).all()
 
     # -------------------------------------------------------------------------
@@ -351,7 +351,7 @@ class TestVerificationCatchesProblems:
 
         with pytest.raises(LeaderboardVerificationError):
             LeaderboardVerification(
-                leaderboard, expected_topic_ids=topic_ids, warn=False
+                leaderboard, on_missing="error", expected_topic_ids=topic_ids, warn=False
             ).complete_topics()
 
     def test_qrels_verification_catches_duplicates(self, sample_topics):

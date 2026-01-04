@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from trec_auto_judge.llm.minima_llm_dspy import run_dspy_batch
 from trec_auto_judge import MinimaLlmConfig, OpenAIMinimaLlm
+from trec_auto_judge.leaderboard.leaderboard import OnMissing
 
 
 # =============================================================================
@@ -94,9 +95,9 @@ class NuggetGradeData(BaseModel):
 # =============================================================================
 
 RUBRIC_SPEC = LeaderboardSpec(measures=(
-    MeasureSpec("NUGGET_COVERAGE", aggregate=mean_of_floats, cast=float),
-    MeasureSpec("AVG_GRADE", aggregate=mean_of_floats, cast=float),
-    MeasureSpec("COVERED_COUNT", aggregate=mean_of_floats, cast=float),
+    MeasureSpec("NUGGET_COVERAGE", aggregate=mean_of_floats, cast=float, default=0.0),
+    MeasureSpec("AVG_GRADE", aggregate=mean_of_floats, cast=float, default=0.0),
+    MeasureSpec("COVERED_COUNT", aggregate=mean_of_floats, cast=float, default=0.0),
 ))
 
 
@@ -140,7 +141,9 @@ class RubricJudge(AutoJudge):
             grade_threshold: Minimum grade to consider a nugget "covered" (default: 3)
         """
         self.grade_threshold = grade_threshold
-
+        self.expected_topic_ids:Sequence[str] = []
+        self.on_missing_evals: OnMissing = "fix_aggregate"
+        
     def create_nuggets(
         self,
         rag_responses: Sequence[Report],
@@ -246,7 +249,8 @@ class RubricJudge(AutoJudge):
         # Prepare grading data (one per response-nugget pair)
         grade_data: List[NuggetGradeData] = []
         response_nugget_map: Dict[str, List[NuggetGradeData]] = {}  # run_id:topic_id -> data list
-
+        self.expected_topic_ids=[t.request_id for t in rag_topics]
+        
         for response in rag_responses:
             metadata = response.metadata
             run_id = metadata.run_id
@@ -330,14 +334,14 @@ class RubricJudge(AutoJudge):
             if response_key in response_grades:
                 response.evaldata = response_grades[response_key]
 
-        expected_topic_ids=[t.request_id for t in rag_topics]
+
         # Build leaderboard
         leaderboard = self._build_leaderboard(response_grades)
-        leaderboard.verify(warn=True,expected_topic_ids=expected_topic_ids)
+        leaderboard.verify(warn=True, expected_topic_ids=self.expected_topic_ids, on_missing=self.on_missing_evals)
 
         # Build qrels from grade data
         qrels = build_qrels(records=grade_data, spec=RUBRIC_QRELS) if grade_data else None
-        qrels.verify(warn=True, expected_topic_ids=expected_topic_ids)
+        qrels.verify(warn=True, expected_topic_ids=self.expected_topic_ids)
 
         return (leaderboard, qrels)
 
@@ -357,8 +361,8 @@ class RubricJudge(AutoJudge):
                 }
             )
 
-        leaderboard = b.build()
-        LeaderboardVerification(leaderboard, warn=True).complete_measures(include_all_row=False).same_topics_per_run()
+        leaderboard = b.build(expected_topic_ids=self.expected_topic_ids, on_missing = self.on_missing_evals)
+        leaderboard.verify(expected_topic_ids=self.expected_topic_ids, warn=False, on_missing = self.on_missing_evals)
         return leaderboard
 
 

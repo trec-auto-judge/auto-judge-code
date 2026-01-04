@@ -3,6 +3,8 @@
 import sys
 from typing import Optional, Sequence, TYPE_CHECKING
 
+from trec_auto_judge.utils import format_preview
+
 if TYPE_CHECKING:
     from .protocols import NuggetBanksProtocol
 
@@ -64,10 +66,8 @@ class NuggetBanksVerification:
         missing = topic_ids - bank_ids
         if missing:
             missing_list = sorted(missing)
-            preview = ", ".join(missing_list[:10])
-            more = f" ... ({len(missing_list) - 10} more)" if len(missing_list) > 10 else ""
             self._raise_or_warn(NuggetBanksVerificationError(
-                f"Missing nugget banks for {len(missing_list)} topic(s): {preview}{more}"
+                f"Missing nugget banks for {len(missing_list)} topic(s): {format_preview(missing_list)}"
             ))
 
         return self
@@ -85,10 +85,8 @@ class NuggetBanksVerification:
         extra = bank_ids - topic_ids
         if extra:
             extra_list = sorted(extra)
-            preview = ", ".join(extra_list[:10])
-            more = f" ... ({len(extra_list) - 10} more)" if len(extra_list) > 10 else ""
             self._raise_or_warn(NuggetBanksVerificationError(
-                f"Nugget banks for {len(extra_list)} unknown topic(s): {preview}{more}"
+                f"Nugget banks for {len(extra_list)} unknown topic(s): {format_preview(extra_list)}"
             ))
 
         return self
@@ -122,10 +120,8 @@ class NuggetBanksVerification:
                 empty_banks.append(query_id)
 
         if empty_banks:
-            preview = ", ".join(sorted(empty_banks)[:10])
-            more = f" ... ({len(empty_banks) - 10} more)" if len(empty_banks) > 10 else ""
             self._raise_or_warn(NuggetBanksVerificationError(
-                f"Empty nugget banks for {len(empty_banks)} topic(s): {preview}{more}"
+                f"Empty nugget banks for {len(empty_banks)} topic(s): {format_preview(sorted(empty_banks))}"
             ))
 
         return self
