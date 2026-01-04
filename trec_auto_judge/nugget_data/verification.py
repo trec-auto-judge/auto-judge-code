@@ -48,7 +48,7 @@ class NuggetBanksVerification:
 
     def _raise_or_warn(self, err: NuggetBanksVerificationError):
         if self.warn:
-            print(f"Warning: {err}", file=sys.stderr)
+            print(f"Nugget Verification Warning: {err}", file=sys.stderr)
         else:
             raise err
 

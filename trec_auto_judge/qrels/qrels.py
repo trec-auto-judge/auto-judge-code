@@ -2,7 +2,8 @@ import hashlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple, TypeVar, Generic, Callable, Iterable, Sequence, Union
+from typing import Dict, List, Optional, Tuple, TypeVar, Generic, Callable, Iterable, Sequence, Union
+
 
 def doc_id_md5(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
@@ -42,6 +43,10 @@ class Qrels:
     """
     rows: Sequence[QrelRow]
     
+    def verify(self, expected_topic_ids: Optional[Sequence[str]], warn:Optional[bool]=False):
+        QrelsVerification(self, expected_topic_ids=expected_topic_ids, warn=warn).all()
+        
+        
 # === Qrel builder ===
 
 def build_qrels(*, records: Iterable[R], spec: QrelsSpec[R]) -> list[QrelRow]:
@@ -103,7 +108,7 @@ class QrelsVerification:
 
     def _raise_or_warn(self, err: QrelsVerificationError):
         if self.warn:
-            print(f"Warning: {err}", file=sys.stderr)
+            print(f"Qrels Verification Warning: {err}", file=sys.stderr)
         else:
             raise err
 

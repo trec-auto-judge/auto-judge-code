@@ -330,12 +330,14 @@ class RubricJudge(AutoJudge):
             if response_key in response_grades:
                 response.evaldata = response_grades[response_key]
 
+        expected_topic_ids=[t.request_id for t in rag_topics]
         # Build leaderboard
         leaderboard = self._build_leaderboard(response_grades)
-        leaderboard.verify(warn=True, expected_topic_ids=[t.request_id for t in rag_topics])
+        leaderboard.verify(warn=True,expected_topic_ids=expected_topic_ids)
 
         # Build qrels from grade data
         qrels = build_qrels(records=grade_data, spec=RUBRIC_QRELS) if grade_data else None
+        qrels.verify(warn=True, expected_topic_ids=expected_topic_ids)
 
         return (leaderboard, qrels)
 

@@ -37,7 +37,7 @@ class Leaderboard:
     measures: Tuple[MeasureName, ...]
     entries: Tuple[LeaderboardEntry, ...]
     all_topic_id: str = "all"
-
+    
     def all_measure_names(self) -> Tuple[MeasureName, ...]:
         """Return measure names in schema order."""
         return self.measures
@@ -259,7 +259,7 @@ class LeaderboardVerification:
 
     def _raise_or_warn(self, err:LeaderboardVerificationError):
         if self.warn:
-            print(f"Warning: {err}", file=sys.stderr)
+            print(f"Leaderboard Verification Warning: {err}", file=sys.stderr)
         else:
             raise err
 
@@ -369,7 +369,9 @@ class LeaderboardVerification:
         expected = set(self.expected_topic_ids)
         
         
-        for run, leaderboard_run_entries in groupby(self.leaderboard.entries, key=lambda e:e.run_id):
+        for run, leaderboard_run_entries in groupby(sorted(self.leaderboard.entries
+                                                           , key=lambda e: e.run_id)
+                                                    , key=lambda e:e.run_id):
             seen = set()
 
             for e in leaderboard_run_entries:
@@ -440,13 +442,19 @@ class LeaderboardVerification:
         Returns:
             self for chaining
         """
-        return (
-            self.complete_measures(include_all_row=include_all_row)
-            .complete_topics()
-            .no_extra_topics()
-            # .same_topics_per_run()
-        )
-
+        
+        if self.expected_topic_ids is not None:
+            return (
+                self.complete_measures(include_all_row=include_all_row)
+                .complete_topics()
+                .no_extra_topics()
+                # .same_topics_per_run()   # omitted because that is already covered by the previous calls.
+            )
+        else:
+            return (
+                self.complete_measures(include_all_row=include_all_row)
+                .same_topics_per_run()  # Fall back when we don't know the true topics.
+            )
 
 #  === Example aggregators (optional helpers) ====
 

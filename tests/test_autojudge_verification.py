@@ -199,25 +199,25 @@ class TestRubricJudgeVerification:
     def test_create_nuggets_complete_topics(self, nuggets_created, sample_topics):
         """Verify every topic has a nugget bank entry."""
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics
+            nuggets_created.nuggets, sample_topics, warn=False
         ).complete_topics()
 
     def test_create_nuggets_no_extra_topics(self, nuggets_created, sample_topics):
         """Verify no nugget banks exist for non-existent topics."""
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics
+            nuggets_created.nuggets, sample_topics, warn=False
         ).no_extra_topics()
 
     def test_create_nuggets_non_empty_banks(self, nuggets_created, sample_topics):
         """Verify each nugget bank has at least one nugget."""
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics
+            nuggets_created.nuggets, sample_topics, warn=False
         ).non_empty_banks()
 
     def test_create_nuggets_all_verification(self, nuggets_created, sample_topics):
         """Run all nugget verification checks."""
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics
+            nuggets_created.nuggets, sample_topics, warn=False
         ).all()
 
     # -------------------------------------------------------------------------
@@ -238,7 +238,7 @@ class TestRubricJudgeVerification:
     def test_judge_leaderboard_complete_measures(self, judge_results):
         """Verify every leaderboard entry has all measures."""
         LeaderboardVerification(
-            judge_results.leaderboard
+            judge_results.leaderboard, warn=False
         ).complete_measures()
 
     def test_judge_leaderboard_complete_measures_excluding_all_row(self, judge_results):
@@ -250,28 +250,28 @@ class TestRubricJudgeVerification:
     def test_judge_leaderboard_same_topics_per_run(self, judge_results):
         """Verify all runs have the same set of topics."""
         LeaderboardVerification(
-            judge_results.leaderboard
+            judge_results.leaderboard, warn=False
         ).same_topics_per_run()
 
     def test_judge_leaderboard_complete_topics(self, judge_results, sample_topics):
         """Verify every expected topic has leaderboard entries."""
         topic_ids = [t.request_id for t in sample_topics]
         LeaderboardVerification(
-            judge_results.leaderboard, expected_topic_ids=topic_ids
+            judge_results.leaderboard, expected_topic_ids=topic_ids, warn=False
         ).complete_topics()
 
     def test_judge_leaderboard_no_extra_topics(self, judge_results, sample_topics):
         """Verify no leaderboard entries for unexpected topics."""
         topic_ids = [t.request_id for t in sample_topics]
         LeaderboardVerification(
-            judge_results.leaderboard, expected_topic_ids=topic_ids
+            judge_results.leaderboard, expected_topic_ids=topic_ids, warn=False
         ).no_extra_topics()
 
     def test_judge_leaderboard_all_verification(self, judge_results, sample_topics):
         """Run all leaderboard verification checks."""
         topic_ids = [t.request_id for t in sample_topics]
         LeaderboardVerification(
-            judge_results.leaderboard, expected_topic_ids=topic_ids
+            judge_results.leaderboard, expected_topic_ids=topic_ids, warn=False
         ).all()
 
     # -------------------------------------------------------------------------
@@ -289,7 +289,7 @@ class TestRubricJudgeVerification:
 
         topic_ids = [t.request_id for t in sample_topics]
         QrelsVerification(
-            judge_results.qrels, expected_topic_ids=topic_ids
+            judge_results.qrels, expected_topic_ids=topic_ids, warn=False
         ).complete_topics()
 
     def test_judge_qrels_no_extra_topics(self, judge_results, sample_topics):
@@ -299,7 +299,7 @@ class TestRubricJudgeVerification:
 
         topic_ids = [t.request_id for t in sample_topics]
         QrelsVerification(
-            judge_results.qrels, expected_topic_ids=topic_ids
+            judge_results.qrels, expected_topic_ids=topic_ids, warn=False
         ).no_extra_topics()
 
     def test_judge_qrels_no_duplicates(self, judge_results, sample_topics):
@@ -309,7 +309,7 @@ class TestRubricJudgeVerification:
 
         topic_ids = [t.request_id for t in sample_topics]
         QrelsVerification(
-            judge_results.qrels, expected_topic_ids=topic_ids
+            judge_results.qrels, expected_topic_ids=topic_ids, warn=False
         ).no_duplicates()
 
     def test_judge_qrels_all_verification(self, judge_results, sample_topics):
@@ -319,7 +319,7 @@ class TestRubricJudgeVerification:
 
         topic_ids = [t.request_id for t in sample_topics]
         QrelsVerification(
-            judge_results.qrels, expected_topic_ids=topic_ids
+            judge_results.qrels, expected_topic_ids=topic_ids, warn=False
         ).all()
 
 
@@ -347,7 +347,7 @@ class TestVerificationCatchesProblems:
 
         with pytest.raises(LeaderboardVerificationError):
             LeaderboardVerification(
-                leaderboard, expected_topic_ids=topic_ids
+                leaderboard, expected_topic_ids=topic_ids, warn=False
             ).complete_topics()
 
     def test_qrels_verification_catches_duplicates(self, sample_topics):
@@ -364,4 +364,4 @@ class TestVerificationCatchesProblems:
         topic_ids = [t.request_id for t in sample_topics]
 
         with pytest.raises(QrelsVerificationError):
-            QrelsVerification(qrels, expected_topic_ids=topic_ids).no_duplicates()
+            QrelsVerification(qrels, expected_topic_ids=topic_ids, warn=False).no_duplicates()
