@@ -124,6 +124,15 @@ class ResolvedConfiguration:
     """Resolved path for judge output (from judge_settings.filebase)."""
 
 
+# Reserved parameter names that would collide with AutoJudge protocol
+RESERVED_PARAM_NAMES = frozenset({
+    "rag_responses",
+    "rag_topics",
+    "llm_config",
+    "nugget_banks",
+})
+
+
 def _validate_no_underscore_params(settings: dict[str, Any], context: str) -> None:
     """Raise error if any parameter starts with underscore (reserved for built-ins)."""
     for key in settings:
@@ -134,25 +143,41 @@ def _validate_no_underscore_params(settings: dict[str, Any], context: str) -> No
             )
 
 
+def _validate_no_reserved_params(settings: dict[str, Any], context: str) -> None:
+    """Raise error if any parameter collides with AutoJudge protocol parameters."""
+    for key in settings:
+        if key in RESERVED_PARAM_NAMES:
+            raise ValueError(
+                f"Parameter '{key}' in {context} is reserved. "
+                f"These names collide with AutoJudge protocol: {sorted(RESERVED_PARAM_NAMES)}"
+            )
+
+
+def _validate_settings(settings: dict[str, Any], context: str) -> None:
+    """Validate a settings dict for reserved names."""
+    _validate_no_underscore_params(settings, context)
+    _validate_no_reserved_params(settings, context)
+
+
 def _validate_workflow(workflow: Workflow) -> None:
     """Validate workflow configuration on load."""
-    _validate_no_underscore_params(workflow.settings, "settings")
-    _validate_no_underscore_params(workflow.nugget_settings, "nugget_settings")
-    _validate_no_underscore_params(workflow.judge_settings, "judge_settings")
+    _validate_settings(workflow.settings, "settings")
+    _validate_settings(workflow.nugget_settings, "nugget_settings")
+    _validate_settings(workflow.judge_settings, "judge_settings")
 
     for name, variant in workflow.variants.items():
-        _validate_no_underscore_params(variant, f"variants.{name}")
+        _validate_settings(variant, f"variants.{name}")
         if "nugget_settings" in variant:
-            _validate_no_underscore_params(variant["nugget_settings"], f"variants.{name}.nugget_settings")
+            _validate_settings(variant["nugget_settings"], f"variants.{name}.nugget_settings")
         if "judge_settings" in variant:
-            _validate_no_underscore_params(variant["judge_settings"], f"variants.{name}.judge_settings")
+            _validate_settings(variant["judge_settings"], f"variants.{name}.judge_settings")
 
     for name, sweep in workflow.sweeps.items():
-        _validate_no_underscore_params(sweep, f"sweeps.{name}")
+        _validate_settings(sweep, f"sweeps.{name}")
         if "nugget_settings" in sweep:
-            _validate_no_underscore_params(sweep["nugget_settings"], f"sweeps.{name}.nugget_settings")
+            _validate_settings(sweep["nugget_settings"], f"sweeps.{name}.nugget_settings")
         if "judge_settings" in sweep:
-            _validate_no_underscore_params(sweep["judge_settings"], f"sweeps.{name}.judge_settings")
+            _validate_settings(sweep["judge_settings"], f"sweeps.{name}.judge_settings")
 
 
 def _substitute_template(template: str, variables: dict[str, Any]) -> str:
