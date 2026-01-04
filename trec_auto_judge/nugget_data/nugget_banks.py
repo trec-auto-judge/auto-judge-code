@@ -7,7 +7,7 @@ Supports both NuggetBanks (autoargue) and NuggetizerNuggetBanks (autonuggetizer)
 import gzip
 import json
 from pathlib import Path
-from typing import ClassVar, Dict, List, Type, TypeVar, Union, TextIO
+from typing import ClassVar, Dict, List, Sequence, Type, TypeVar, Union, TextIO
 
 from pydantic import BaseModel
 
@@ -52,6 +52,10 @@ class NuggetBanks(BaseModel):
             result[qid] = bank
         return cls(banks=result)
 
+    def verify(self, expected_topic_ids: Sequence[str], warn: bool = False) -> None:
+        """Verify nugget banks against expected topic IDs."""
+        from .verification import NuggetBanksVerification  # Local import avoids cycle
+        NuggetBanksVerification(self, expected_topic_ids=expected_topic_ids, warn=warn).all()
 
 
 # Curried I/O functions for NuggetBank loading

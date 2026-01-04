@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, List, Optional, Dict, Type
+from typing import Any, ClassVar, List, Optional, Dict, Sequence, Type
 
 from pydantic import BaseModel
 
@@ -80,6 +80,11 @@ class NuggetizerNuggetBanks(BaseModel):
                 raise ValueError(f"Duplicate qid: {bank.qid}")
             result[bank.qid] = bank
         return cls(banks=result)
+
+    def verify(self, expected_topic_ids: Sequence[str], warn: bool = False) -> None:
+        """Verify nugget banks against expected topic IDs."""
+        from ..verification import NuggetBanksVerification  # Local import avoids cycle
+        NuggetBanksVerification(self, expected_topic_ids=expected_topic_ids, warn=warn).all()
 
 
 # Curried I/O functions for NuggetizerNuggetBanks

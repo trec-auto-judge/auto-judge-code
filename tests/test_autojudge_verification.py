@@ -198,26 +198,30 @@ class TestRubricJudgeVerification:
 
     def test_create_nuggets_complete_topics(self, nuggets_created, sample_topics):
         """Verify every topic has a nugget bank entry."""
+        topic_ids = [t.request_id for t in sample_topics]
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics, warn=False
+            nuggets_created.nuggets, topic_ids, warn=False
         ).complete_topics()
 
     def test_create_nuggets_no_extra_topics(self, nuggets_created, sample_topics):
         """Verify no nugget banks exist for non-existent topics."""
+        topic_ids = [t.request_id for t in sample_topics]
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics, warn=False
+            nuggets_created.nuggets, topic_ids, warn=False
         ).no_extra_topics()
 
     def test_create_nuggets_non_empty_banks(self, nuggets_created, sample_topics):
         """Verify each nugget bank has at least one nugget."""
+        topic_ids = [t.request_id for t in sample_topics]
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics, warn=False
+            nuggets_created.nuggets, topic_ids, warn=False
         ).non_empty_banks()
 
     def test_create_nuggets_all_verification(self, nuggets_created, sample_topics):
         """Run all nugget verification checks."""
+        topic_ids = [t.request_id for t in sample_topics]
         NuggetBanksVerification(
-            nuggets_created.nuggets, sample_topics, warn=False
+            nuggets_created.nuggets, topic_ids, warn=False
         ).all()
 
     # -------------------------------------------------------------------------

@@ -4,7 +4,6 @@ import sys
 from typing import Optional, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..request import Request
     from .protocols import NuggetBanksProtocol
 
 
@@ -19,11 +18,11 @@ class NuggetBanksVerification:
 
     Chain verification methods to run multiple checks:
 
-        NuggetBanksVerification(banks, topics).complete_topics().non_empty_banks()
+        NuggetBanksVerification(banks, topic_ids).complete_topics().non_empty_banks()
 
     Or run all checks:
 
-        NuggetBanksVerification(banks, topics).all()
+        NuggetBanksVerification(banks, topic_ids).all()
 
     Each method raises NuggetBanksVerificationError on failure (fail-fast).
     """
@@ -31,7 +30,7 @@ class NuggetBanksVerification:
     def __init__(
         self,
         nugget_banks: "NuggetBanksProtocol",
-        rag_topics: Sequence["Request"],
+        expected_topic_ids: Sequence[str],
         warn: Optional[bool] = False,
     ):
         """
@@ -39,11 +38,11 @@ class NuggetBanksVerification:
 
         Args:
             nugget_banks: The nugget banks container to verify
-            rag_topics: The topics/requests to verify against
+            expected_topic_ids: The expected topic IDs to verify against
             warn: If True, print warnings instead of raising exceptions
         """
         self.nugget_banks = nugget_banks
-        self.rag_topics = rag_topics
+        self.expected_topic_ids = expected_topic_ids
         self.warn = warn
 
     def _raise_or_warn(self, err: NuggetBanksVerificationError):
@@ -60,7 +59,7 @@ class NuggetBanksVerification:
             NuggetBanksVerificationError: If any topic is missing a nugget bank
         """
         bank_ids = set(self.nugget_banks.banks.keys())
-        topic_ids = {t.request_id for t in self.rag_topics}
+        topic_ids = set(self.expected_topic_ids)
 
         missing = topic_ids - bank_ids
         if missing:
@@ -81,7 +80,7 @@ class NuggetBanksVerification:
             NuggetBanksVerificationError: If banks exist for unknown topics
         """
         bank_ids = set(self.nugget_banks.banks.keys())
-        topic_ids = {t.request_id for t in self.rag_topics}
+        topic_ids = set(self.expected_topic_ids)
 
         extra = bank_ids - topic_ids
         if extra:

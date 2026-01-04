@@ -15,11 +15,10 @@ import yaml
 
 from .nugget_data import (
     NuggetBanksProtocol,
-    NuggetBanksVerification,
     write_nugget_banks_generic,
     load_nugget_banks_generic,
 )
-from .qrels.qrels import Qrels, QrelsVerification, write_qrel_file
+from .qrels.qrels import Qrels, write_qrel_file
 from .leaderboard.leaderboard import Leaderboard
 from .llm.minima_llm import MinimaLlmConfig
 from .report import Report
@@ -233,7 +232,8 @@ def run_judge(
             )
             # Verify created nuggets
             if current_nuggets is not None:
-                NuggetBanksVerification(current_nuggets, rag_topics).all()
+                topic_ids = [t.request_id for t in rag_topics]
+                current_nuggets.verify(topic_ids)
                 # Save immediately for crash recovery
                 if nugget_file_path:
                     write_nugget_banks_generic(current_nuggets, nugget_file_path)
@@ -300,12 +300,12 @@ def _write_outputs(
 
     # Resolve output paths from filebase
     leaderboard_path, qrels_path = _resolve_judgment_file_paths(output_path)
-    # leaderboard.verify(expected_topic_ids=topic_ids)
+    leaderboard.verify(expected_topic_ids=topic_ids)
     leaderboard.write(leaderboard_path)
     print(f"[judge_runner] Leaderboard saved to: {leaderboard_path}", file=sys.stderr)
 
     if qrels is not None:
-        QrelsVerification(qrels, expected_topic_ids=topic_ids).all()
+        qrels.verify(expected_topic_ids=topic_ids)
         write_qrel_file(qrel_out_file=qrels_path, qrels=qrels)
         print(f"[judge_runner] Qrels saved to: {qrels_path}", file=sys.stderr)
 

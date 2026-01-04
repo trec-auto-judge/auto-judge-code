@@ -616,6 +616,7 @@ def test_nugget_banks_verification_all_pass():
         Request(request_id="t1", title="Topic 1"),
         Request(request_id="t2", title="Topic 2"),
     ]
+    topic_ids = [t.request_id for t in topics]
 
     # Create matching nugget banks
     bank1 = NuggetBank(query_id="t1", title_query="Topic 1")
@@ -627,7 +628,7 @@ def test_nugget_banks_verification_all_pass():
     banks = NuggetBanks.from_banks_list([bank1, bank2])
 
     # Should pass all checks
-    NuggetBanksVerification(banks, topics).all()
+    NuggetBanksVerification(banks, topic_ids).all()
 
 
 def test_nugget_banks_verification_complete_topics():
@@ -645,6 +646,7 @@ def test_nugget_banks_verification_complete_topics():
         Request(request_id="t2", title="Topic 2"),
         Request(request_id="t3", title="Topic 3"),
     ]
+    topic_ids = [t.request_id for t in topics]
 
     # Only create nugget banks for 2 topics
     bank1 = NuggetBank(query_id="t1", title_query="Topic 1")
@@ -657,7 +659,7 @@ def test_nugget_banks_verification_complete_topics():
 
     # Should fail on complete_topics check
     with pytest.raises(NuggetBanksVerificationError, match="Missing nugget banks.*t3"):
-        NuggetBanksVerification(banks, topics).complete_topics()
+        NuggetBanksVerification(banks, topic_ids).complete_topics()
 
 
 def test_nugget_banks_verification_no_extra_topics():
@@ -673,6 +675,7 @@ def test_nugget_banks_verification_no_extra_topics():
     topics = [
         Request(request_id="t1", title="Topic 1"),
     ]
+    topic_ids = [t.request_id for t in topics]
 
     # Create nugget banks for 2 topics (one extra)
     bank1 = NuggetBank(query_id="t1", title_query="Topic 1")
@@ -685,7 +688,7 @@ def test_nugget_banks_verification_no_extra_topics():
 
     # Should fail on no_extra_topics check
     with pytest.raises(NuggetBanksVerificationError, match="unknown topic.*extra"):
-        NuggetBanksVerification(banks, topics).no_extra_topics()
+        NuggetBanksVerification(banks, topic_ids).no_extra_topics()
 
 
 def test_nugget_banks_verification_non_empty_banks():
@@ -701,6 +704,7 @@ def test_nugget_banks_verification_non_empty_banks():
     topics = [
         Request(request_id="t1", title="Topic 1"),
     ]
+    topic_ids = [t.request_id for t in topics]
 
     # Create empty nugget bank (no nuggets added)
     empty_bank = NuggetBank(query_id="t1", title_query="Topic 1")
@@ -708,7 +712,7 @@ def test_nugget_banks_verification_non_empty_banks():
 
     # Should fail on non_empty_banks check
     with pytest.raises(NuggetBanksVerificationError, match="Empty nugget banks.*t1"):
-        NuggetBanksVerification(banks, topics).non_empty_banks()
+        NuggetBanksVerification(banks, topic_ids).non_empty_banks()
 
 
 def test_nugget_banks_verification_chaining():
@@ -720,13 +724,14 @@ def test_nugget_banks_verification_chaining():
     from trec_auto_judge.request import Request
 
     topics = [Request(request_id="t1", title="Topic 1")]
-
+    topic_ids = [t.request_id for t in topics]
+    
     bank = NuggetBank(query_id="t1", title_query="Topic 1")
     bank.add_nuggets(NuggetQuestion.from_lazy("t1", "Q?", ["A"]))
     banks = NuggetBanks.from_banks_list([bank])
 
     # All methods return self for chaining
-    result = NuggetBanksVerification(banks, topics).complete_topics().no_extra_topics().non_empty_banks()
+    result = NuggetBanksVerification(banks, topic_ids).complete_topics().no_extra_topics().non_empty_banks()
     assert isinstance(result, NuggetBanksVerification)
 
 
@@ -744,6 +749,7 @@ def test_nugget_banks_verification_fail_fast():
         Request(request_id="t1", title="Topic 1"),
         Request(request_id="t2", title="Topic 2"),
     ]
+    topic_ids = [t.request_id for t in topics]
 
     # Create empty bank for t1 (missing t2)
     empty_bank = NuggetBank(query_id="t1", title_query="Topic 1")
@@ -751,7 +757,7 @@ def test_nugget_banks_verification_fail_fast():
 
     # all() should fail on complete_topics first (before non_empty_banks)
     with pytest.raises(NuggetBanksVerificationError, match="Missing nugget banks"):
-        NuggetBanksVerification(banks, topics).all()
+        NuggetBanksVerification(banks, topic_ids).all()
 
 
 def test_nugget_banks_verification_with_nuggetizer_format():
@@ -764,14 +770,15 @@ def test_nugget_banks_verification_with_nuggetizer_format():
     from trec_auto_judge.request import Request
 
     topics = [Request(request_id="t1", title="Topic 1")]
-
+    topic_ids = [t.request_id for t in topics]
+    
     # Create NuggetizerNuggetBank with nuggets
     bank = NuggetizerNuggetBank(qid="t1", query="Topic 1")
     bank.nuggets = [NuggetizerNugget(text="Key fact")]
     banks = NuggetizerNuggetBanks.from_banks_list([bank])
 
     # Should pass all checks
-    NuggetBanksVerification(banks, topics).all()
+    NuggetBanksVerification(banks, topic_ids).all()
 
 
 def test_nugget_banks_verification_with_claims():
@@ -783,11 +790,12 @@ def test_nugget_banks_verification_with_claims():
     from trec_auto_judge.request import Request
 
     topics = [Request(request_id="t1", title="Topic 1")]
-
+    topic_ids = [t.request_id for t in topics]
+    
     # Create bank with only claims (no questions)
     bank = NuggetBank(query_id="t1", title_query="Topic 1")
     bank.add_nuggets(NuggetClaim.from_lazy("t1", "This is a claim"))
     banks = NuggetBanks.from_banks_list([bank])
 
     # Should pass - claims count as valid nuggets
-    NuggetBanksVerification(banks, topics).all()
+    NuggetBanksVerification(banks, topic_ids).all()

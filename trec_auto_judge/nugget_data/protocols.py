@@ -1,6 +1,6 @@
 """Protocols for generic nugget bank types."""
 
-from typing import ClassVar, Dict, List, Protocol, Type, runtime_checkable
+from typing import ClassVar, Dict, List, Protocol, Sequence, Type, runtime_checkable
 
 
 @runtime_checkable
@@ -33,4 +33,8 @@ class NuggetBanksProtocol(Protocol):
         cls, banks: List[NuggetBankProtocol], overwrite: bool = False
     ) -> "NuggetBanksProtocol":
         """Create container from list of banks."""
+        ...
+
+    def verify(self, expected_topic_ids: Sequence[str], warn: bool = False) -> None:
+        """Verify nugget banks against expected topic IDs."""
         ...
