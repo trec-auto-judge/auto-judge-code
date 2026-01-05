@@ -4,7 +4,6 @@ JudgeRunner: Orchestrates AutoJudge execution with nugget lifecycle management.
 Consolidates repeated functionality for nugget creation, saving, and judging.
 """
 
-import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -13,6 +12,7 @@ from typing import Any, Iterable, Optional, Sequence
 
 import yaml
 
+from .utils import get_git_info
 from .nugget_data import (
     NuggetBanksProtocol,
     write_nugget_banks_generic,
@@ -77,62 +77,6 @@ def _resolve_config_file_path(filebase: Path) -> Path:
     if filebase.suffix in (".yml", ".yaml"):
         return filebase
     return filebase.parent / f"{filebase.name}.config.yml"
-
-
-def _get_git_info() -> dict[str, str]:
-    """
-    Get git repository information for reproducibility.
-
-    Returns dict with:
-        - commit: SHA or "unknown"
-        - dirty: "true", "false", or "unknown"
-        - remote: remote URL or "none" or "unknown"
-    """
-    result = {}
-
-    # Get commit SHA
-    try:
-        commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        result["commit"] = commit.stdout.strip() if commit.returncode == 0 else "unknown"
-    except Exception:
-        result["commit"] = "unknown"
-
-    # Check if dirty
-    try:
-        status = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if status.returncode == 0:
-            result["dirty"] = "true" if status.stdout.strip() else "false"
-        else:
-            result["dirty"] = "unknown"
-    except Exception:
-        result["dirty"] = "unknown"
-
-    # Get remote URL (origin)
-    try:
-        remote = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if remote.returncode == 0 and remote.stdout.strip():
-            result["remote"] = remote.stdout.strip()
-        else:
-            result["remote"] = "none"
-    except Exception:
-        result["remote"] = "unknown"
-
-    return result
 
 
 def run_judge(
@@ -337,7 +281,7 @@ def _write_run_config(
         "judge": do_judge,
         "llm_model": llm_model,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "git": _get_git_info(),
+        "git": get_git_info(),
     }
 
     # Only include non-empty settings

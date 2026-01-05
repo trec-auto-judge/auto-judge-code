@@ -1,6 +1,63 @@
 """Shared utility functions."""
 
+import subprocess
 from typing import Sequence
+
+
+def get_git_info() -> dict[str, str]:
+    """
+    Get git repository information for reproducibility.
+
+    Returns dict with:
+        - commit: SHA or "unknown"
+        - dirty: "true", "false", or "unknown"
+        - remote: remote URL or "none" or "unknown"
+    """
+    result = {}
+
+    # Get commit SHA
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        result["commit"] = commit.stdout.strip() if commit.returncode == 0 else "unknown"
+    except Exception:
+        result["commit"] = "unknown"
+
+    # Check if dirty
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if status.returncode == 0:
+            result["dirty"] = "true" if status.stdout.strip() else "false"
+        else:
+            result["dirty"] = "unknown"
+    except Exception:
+        result["dirty"] = "unknown"
+
+    # Get remote URL (origin)
+    try:
+        remote = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if remote.returncode == 0 and remote.stdout.strip():
+            result["remote"] = remote.stdout.strip()
+        else:
+            result["remote"] = "none"
+    except Exception:
+        result["remote"] = "unknown"
+
+    return result
 
 
 def format_preview(
