@@ -1,0 +1,3 @@
+# PyTerrier retrieval judge: no nuggets
+create_nuggets: false
+judge: true

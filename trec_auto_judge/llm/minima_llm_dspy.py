@@ -5,6 +5,7 @@ import typing
 from typing import Any, Callable, Dict, List, Optional, Type, Union, cast, get_args
 
 import asyncio
+import contextvars
 import inspect
 import re
 
@@ -466,8 +467,8 @@ async def run_dspy_batch(
     signature_class: Type[dspy.Signature],
     annotation_objs: List[BaseModel],
     output_converter: Callable[[Any, BaseModel], None],
+    backend: OpenAIMinimaLlm,
     predictor_class: Type = dspy.ChainOfThought,
-    backend: Optional[OpenAIMinimaLlm] = None
 ) -> List[BaseModel]:
     """
     Execute a DSPy batch with MinimaLLM backend.
@@ -529,7 +530,12 @@ async def run_dspy_batch(
 
     # Code errors that should propagate immediately (not retry)
     CODE_ERRORS = (NameError, TypeError, AttributeError, SyntaxError, ImportError)
-    max_attempts = backend.cfg.max_attempts
+
+    # max_attempts controls HTTP retries in generate().
+    # For parse-error retries here, use a reasonable default if max_attempts=0 (infinite HTTP retries).
+    # This separates concerns: generate() handles server errors, process_one() handles parse errors.
+    http_max_attempts = backend.cfg.max_attempts
+    parse_retry_limit = 3 if http_max_attempts == 0 else http_max_attempts
 
     # Process each annotation
     async def process_one(obj: BaseModel) -> BaseModel:
@@ -537,12 +543,14 @@ async def run_dspy_batch(
         kwargs = obj.model_dump(include=set(input_fields))
 
         last_error: Optional[Exception] = None
+        force_refresh_token: Optional[contextvars.Token[bool]] = None
 
-        for attempt in range(max_attempts):
-            # On retry, force refresh to bypass cached response that caused error
-            if attempt > 0:
-                token = set_force_refresh(True)
+        for attempt in range(parse_retry_limit):
             try:
+                # On retry, force refresh to bypass cached response that caused error
+                if attempt > 0:
+                    force_refresh_token = set_force_refresh(True)
+
                 # Run prediction
                 result = await predictor.acall(**kwargs)
 
@@ -563,8 +571,9 @@ async def run_dspy_batch(
                 last_error = e
                 continue
             finally:
-                if attempt > 0:
-                    reset_force_refresh(token)
+                if force_refresh_token is not None:
+                    reset_force_refresh(force_refresh_token)
+                    force_refresh_token = None
 
         # All retries exhausted
         raise last_error  # type: ignore[misc]
@@ -590,3 +599,19 @@ async def run_dspy_batch(
 
     # All results are BaseModel (failures already raised)
     return cast(List[BaseModel], results)
+
+
+
+
+def print_dspy_prompt(sig:dspy.Signature, inputs:Dict[str,Any]):
+    predict = dspy.Predict(sig)
+
+    adapter = dspy.settings.adapter
+
+    messages = adapter.format(
+        signature=predict.signature,
+        demos=[],               # no few-shot examples
+        inputs=inputs
+    )
+
+    print(messages)

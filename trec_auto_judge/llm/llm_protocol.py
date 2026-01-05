@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_checkable
 
 Json = Dict[str, Any]
 

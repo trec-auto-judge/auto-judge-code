@@ -1,0 +1,18 @@
+# Rubric judge creates nuggets first, then judges using them
+create_nuggets: true   # Call create_nuggets() to generate/refine nuggets
+judge: true            # Call judge() to produce leaderboard/qrels
+
+settings:
+  filebase: "{_name}"   # Output: rubric.nuggets.jsonl, rubric.qrels, etc.
+
+nugget_settings:
+  prompt: "minimal"
+
+judge_settings:
+  grade_threshold: 4
+
+
+variants:
+  web:
+    nugget_settings:
+      prompt: "web"

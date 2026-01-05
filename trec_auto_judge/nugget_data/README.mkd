@@ -4,9 +4,9 @@
 
 ```python
 
-from argue_eval.validation.nugget_data import (
+from trec_auto_judge.nugget_data import (
     NuggetBank, NuggetQuestion, NuggetClaim,
-    Answer, Reference, Offsets, Operator
+    Answer, Reference, Offsets, AggregatorType, Creator
 )
 
 # Define some answers with optional references
@@ -114,7 +114,7 @@ bank.add_nuggets(nugget)
 
 
 # Optional: print as JSON
-from argue_eval.validation.nugget_data import print_nugget_json
+from trec_auto_judge.nugget_data import print_nugget_json
 print_nugget_json(nugget_bank)
 
 
@@ -127,3 +127,54 @@ print(f"NuggetBank saved to: {output_path}")
 
 
 ```
+
+---
+
+## Verification
+
+NuggetBanks can be verified against expected topic IDs to ensure completeness.
+
+### Quick Verification via `.verify()`
+
+The simplest way to verify nugget banks:
+
+```python
+topic_ids = [t.request_id for t in topics]
+nugget_banks.verify(
+    expected_topic_ids=topic_ids,
+    warn=False  # raise exceptions on failure
+)
+```
+
+Parameters:
+- `expected_topic_ids`: List of topic IDs that should have nugget banks
+- `warn`: If `True`, print warnings instead of raising exceptions
+
+### Detailed Verification via `NuggetBanksVerification`
+
+For more granular control or test cases, use the fluent `NuggetBanksVerification` class:
+
+```python
+from trec_auto_judge.nugget_data import NuggetBanksVerification
+
+# Chain specific checks
+NuggetBanksVerification(
+    nugget_banks,
+    expected_topic_ids=topic_ids,
+    warn=False
+).complete_topics().no_extra_topics().non_empty_banks()
+
+# Or run all checks
+NuggetBanksVerification(nugget_banks, expected_topic_ids=topic_ids).all()
+```
+
+Available verification methods:
+
+| Method | Description |
+|--------|-------------|
+| `complete_topics()` | Every expected topic has a nugget bank |
+| `no_extra_topics()` | No nugget banks for unexpected topics |
+| `non_empty_banks()` | Each nugget bank has at least one nugget |
+| `all()` | Run all checks |
+
+This prevents silent issues like missing topics or empty nugget banks from propagating through the evaluation pipeline.

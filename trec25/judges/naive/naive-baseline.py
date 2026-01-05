@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from trec_auto_judge import AutoJudge, Sequence, Optional, Report, Request, LeaderboardSpec, LeaderboardBuilder, mean_of_floats, MeasureSpec, auto_judge_to_click_command, Leaderboard, Qrels
+from trec_auto_judge import AutoJudge, Sequence, Optional, Report, Request, LeaderboardSpec, LeaderboardBuilder, LeaderboardVerification, mean_of_floats, MeasureSpec, auto_judge_to_click_command, Leaderboard, Qrels, MinimaLlmConfig, NuggetBanks
 import click
 from pathlib import Path
 from collections import defaultdict
@@ -20,7 +20,21 @@ NAIVE_LEADERBOARD_SPEC = LeaderboardSpec(measures=(
 
 
 class NaiveJudge(AutoJudge):
-    def judge(self, rag_responses: Sequence["Report"], rag_topics: Sequence["Request"]) -> tuple["Leaderboard", Optional["Qrels"]]:
+    def create_nuggets(
+        self,
+        rag_responses: Sequence["Report"],
+        rag_topics: Sequence["Request"],
+        llm_config: MinimaLlmConfig,
+        nugget_banks: Optional["NuggetBanks"] = None,
+        **kwargs
+    ) -> Optional["NuggetBanks"]:
+        return None
+
+    def judge(self, rag_responses: Sequence["Report"]
+              , rag_topics: Sequence["Request"]
+              , llm_config:MinimaLlmConfig
+              , nugget_banks: Optional[NuggetBanks] = None
+              , **kwargs) -> tuple["Leaderboard", Optional["Qrels"]]:
         ret = LeaderboardBuilder(NAIVE_LEADERBOARD_SPEC)
 
         for rag_response in tqdm(rag_responses, "Process RAG Responses"):
@@ -30,7 +44,9 @@ class NaiveJudge(AutoJudge):
             }
             ret.add(run_id=rag_response.metadata.run_id, topic_id=rag_response.metadata.topic_id, values=vals)
 
-        return ret.build(), None
+        leaderboard = ret.build()
+        LeaderboardVerification(leaderboard).all()
+        return leaderboard, None
 
 
 if __name__ == '__main__':

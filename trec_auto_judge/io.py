@@ -14,6 +14,7 @@ def load_runs_failsave(path: Path)->List[Report]:
     print(f"globs: {globs}")
 
     for f in globs:
+        print(f"Loading report from {f}")
         ret.extend(load_report(Path(f)))
     return ret
 

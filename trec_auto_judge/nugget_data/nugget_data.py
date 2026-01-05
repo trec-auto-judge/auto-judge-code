@@ -2,7 +2,8 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Callable, Iterable, TextIO, Type, TypeVar, Union
+from types import MappingProxyType
+from typing import Any, Callable, Iterable, Mapping, TextIO, Type, TypeVar, Union
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -24,9 +25,7 @@ A structured, Pydantic-based representation of query-focused nugget questions an
 ## Usage
 
 ```python
-from argue_eval.validation.nugget_data import NuggetBank, NuggetQuestion, NuggetClaim, Answer
-from .direnv.flake-inputs.syvnmj3hhckkbncm94kfkbl76qsdqqj3-source.pkgs.by-name.os.osquery.update import (
-    force)
+from trec_auto_judge.nugget_data import NuggetBank, NuggetQuestion, NuggetClaim, Answer
 
 # Create simple nuggets with gold answers
 nugget = NuggetQuestion.from_lazy(
@@ -36,11 +35,9 @@ nugget = NuggetQuestion.from_lazy(
 )
 
 # Add a claim-style nugget
-claim = NuggetClaim(
+claim = NuggetClaim.from_lazy(
     query_id="1",
-    claim="There are unicorns in the world",
-    related_question_text="Where are unicorns born?",
-    related_answer=[Answer(answer="where their mom is")]
+    claim="Machu Picchu was built in the 15th century"
 )
 
 # Create a NuggetBank and populate it
@@ -50,7 +47,7 @@ bank.index_nuggets()
 
 # Print flat index of all nuggets
 print(bank.all_nuggets_view)
-
+```
 """
 
 
@@ -75,7 +72,7 @@ def none_as_empty(x: Optional[Dict[Any, Any]]) -> Dict[Any, Any]:
     if x is None:
         return {}
     else:
-        x
+        return x
 
 
 def none_as(x: Optional[Any], default_val):
@@ -222,7 +219,7 @@ class Creator(BaseModel):
     contact: Optional[List[str]] = None
     format: Optional[str] = None
 
-    model_config = {"recursive": True}  # Required in pydantic v2 to support recursion
+    model_config = {"recursive": True, "extra": "ignore"}  # Required in pydantic v2 to support recursion
 
     def set_creation_date(self, dt: datetime) -> None:
         """Set creation_date from a datetime object as an ISO string."""
@@ -287,7 +284,7 @@ class Reference(BaseModel):
     creator: Optional[List[Creator]] = None
     metadata: Optional[Dict[str, Any]] = None
 
-    model_config = {"recursive": True}  # Required in pydantic v2 to support recursion
+    model_config = {"recursive": True, "extra": "ignore"}  # Required in pydantic v2 to support recursion
 
     def add_creator(self, creator: Optional[Union[List[Creator], Creator]]):
         """Normalize and attach creator(s) to the nugget."""
@@ -356,7 +353,7 @@ class Answer(BaseModel):
             **kwargs,
         )
 
-    model_config = {"recursive": True}  # Required in pydantic v2 to support recursion
+    model_config = {"recursive": True, "extra": "ignore"}  # Required in pydantic v2 to support recursion
 
     @classmethod
     def merge_answers(
@@ -481,7 +478,7 @@ class NuggetQuestion(BaseModel):
     creator: Optional[List[Creator]] = None
     metadata: Optional[Dict[str, Any]] = None
 
-    model_config = {"recursive": True}  # Required in pydantic v2 to support recursion
+    model_config = {"recursive": True, "extra": "ignore"}  # Required in pydantic v2 to support recursion
 
     def model_post_init(self, __context):
         """Assign a hash-based ID if none is given, based on the question text."""
@@ -575,18 +572,16 @@ def merge_nugget_questions(nuggets: List[NuggetQuestion]) -> NuggetQuestion:
 
 
 class NuggetClaim(BaseModel):
-    """Represents a fact-like claim optionally linked to a question, answers, references, and provenance."""
+    """Represents a fact-like claim with optional references and provenance."""
 
     claim: str
     claim_markup: Optional[Any] = None
-    related_question_text: Optional[str] = None
-    related_question_obj: Optional[NuggetQuestion] = None
-    related_answer: Optional[List[Answer]] = None
     references: Optional[List[Reference]] = None
 
     sub_nuggets: Optional[List[Union[NuggetQuestion, "NuggetClaim"]]] = None
     aggregator_type: Optional[AggregatorType] = None
 
+    claim_id: Optional[str] = None
     query_id: str
     test_collection: Optional[str] = None
 
@@ -595,10 +590,85 @@ class NuggetClaim(BaseModel):
     creator: Optional[List[Creator]] = None
     metadata: Optional[Dict[str, Any]] = None
 
+    model_config = {"recursive": True, "extra": "ignore"}
+
+    def model_post_init(self, __context):
+        """Assign a hash-based ID if none is given, based on the claim text."""
+        if self.claim_id is None:
+            self.claim_id = hashlib.md5(self.claim.encode()).hexdigest()
+
     def add_creator(self, creator: Optional[Union[List[Creator], Creator]]):
         """Normalize and attach creator(s) to the nugget."""
         self.creator = normalize_creators(creator)
         return self
+
+    def add_references(
+        self,
+        references: Optional[Union[str, Reference, List[str], List[Reference]]],
+    ):
+        """Normalize and attach reference(s) to the claim."""
+        self.references = normalize_references(references)
+        return self
+
+    @classmethod
+    def from_lazy(
+        cls,
+        query_id: str,
+        claim: str,
+        references: Optional[Union[str, Reference, List[str], List[Reference]]] = None,
+        creator: Optional[Union[List[Creator], Creator]] = None,
+        **kwargs,
+    ) -> "NuggetClaim":
+        """Convenient constructor that accepts raw strings and performs normalization."""
+        return cls(
+            query_id=query_id,
+            claim=claim,
+            references=normalize_references(references),
+            creator=normalize_creators(creator),
+            **kwargs,
+        )
+
+
+def merge_nugget_claims(claims: List[NuggetClaim]) -> NuggetClaim:
+    """Merge multiple NuggetClaim instances into one, combining sub-nuggets, references, and metadata."""
+
+    if len(claims) == 0:
+        raise ValueError("list of claims can't be empty")
+
+    base = claims[0]
+
+    return NuggetClaim(
+        claim=base.claim,
+        claim_id=base.claim_id,
+        claim_markup=base.claim_markup,
+        references=opt_list_as_empty(base.references) + [
+            ref
+            for c in claims[1:]
+            if c.references is not None
+            for ref in c.references
+        ],
+        sub_nuggets=[
+            sub for c in claims if c.sub_nuggets is not None for sub in c.sub_nuggets
+        ],
+        aggregator_type=base.aggregator_type,
+        query_id=base.query_id,
+        test_collection=base.test_collection,
+        quality=aggregate_unless_none_list(
+            anss=[c.quality for c in claims],
+            aggregate_fun=agg_take_right,
+            default_val=None,
+        ),
+        importance=aggregate_unless_none_list(
+            [c.importance for c in claims if c.importance is not None],
+            aggregate_fun=agg_take_right,
+        ),
+        creator=Creator.merge_creator_list(
+            [c.creator for c in claims if c.creator is not None],
+        ),
+        metadata=merge_metadata_list(
+            [c.metadata for c in claims if c.metadata is not None]
+        ),
+    )
 
 
 # Ensure recursive model references are resolved (required in Pydantic v2).
@@ -618,40 +688,49 @@ class NuggetBank(BaseModel):
     test_collection: Optional[str] = None
     format_version: str = "v3"
 
-    nugget_bank: Optional[Dict[str, NuggetQuestion | NuggetClaim]] = None
-    all_nuggets_view: Optional[Dict[str, NuggetQuestion | NuggetClaim]] = None
+    nugget_bank: Optional[Dict[str, NuggetQuestion]] = None
+    claim_bank: Optional[Dict[str, NuggetClaim]] = None
+    # Read-only view of all nuggets (questions + claims) flattened including sub_nuggets
+    # Excluded from serialization - rebuilt on load via index_nuggets()
+    all_nuggets_view: Optional[Mapping[str, NuggetQuestion | NuggetClaim]] = Field(
+        default=None, exclude=True
+    )
 
     quality: Optional[int | str] = None
     importance: Optional[int | str] = None
     creator: Optional[List[Creator]] = None
     metadata: Optional[Dict[str, Any]] = None
 
-    def nuggets_as_list(self) -> Optional[List[NuggetQuestion | NuggetClaim]]:
+    model_config = {"recursive": True, "extra": "ignore"}
+
+    def nuggets_as_list(self) -> List[NuggetQuestion | NuggetClaim]:
+        """Return combined list of all questions and claims."""
+        result: List[NuggetQuestion | NuggetClaim] = []
         if self.nugget_bank is not None:
-            return list(self.nugget_bank.values())
-        else:
-            return None
+            result.extend(self.nugget_bank.values())
+        if self.claim_bank is not None:
+            result.extend(self.claim_bank.values())
+        return result
 
-    def put_nugget(self, key: str, nugget: NuggetQuestion | NuggetClaim):
-        """Insert a nugget into the bank by key, merging if necessary. Supports NuggetQuestion only."""
-
+    def _put_question(self, key: str, nugget: NuggetQuestion):
+        """Insert a question into nugget_bank, merging if key exists."""
         if self.nugget_bank is None:
             self.nugget_bank = dict()
 
         if key not in self.nugget_bank:
             self.nugget_bank[key] = nugget
         else:
-            # we have to merge
-            old_nugget = self.nugget_bank[key]
-            if isinstance(old_nugget, NuggetQuestion) and isinstance(
-                nugget, NuggetQuestion
-            ):
-                self.nugget_bank[key] = merge_nugget_questions([old_nugget, nugget])
-            else:
-                # todo claims
-                raise TypeError(
-                    f"Attempt to overwrite nugget entry for key {key}. This is only supported for NuggetQuestions, but types are old_entry: {type(old_nugget)}, new_entry: {type(nugget)}"
-                )
+            self.nugget_bank[key] = merge_nugget_questions([self.nugget_bank[key], nugget])
+
+    def _put_claim(self, key: str, claim: NuggetClaim):
+        """Insert a claim into claim_bank, merging if key exists."""
+        if self.claim_bank is None:
+            self.claim_bank = dict()
+
+        if key not in self.claim_bank:
+            self.claim_bank[key] = claim
+        else:
+            self.claim_bank[key] = merge_nugget_claims([self.claim_bank[key], claim])
 
     def add_nuggets(
         self,
@@ -664,24 +743,18 @@ class NuggetBank(BaseModel):
         if nuggets is None:
             return self
 
-        if self.nugget_bank is None:
-            self.nugget_bank = dict()
-
         if isinstance(nuggets, NuggetQuestion):
-            nugget = nuggets
-            self.put_nugget(key=nugget.question, nugget=nugget)
+            self._put_question(key=nuggets.question, nugget=nuggets)
         elif isinstance(nuggets, NuggetClaim):
-            claim = nuggets
-            self.put_nugget(key=claim.claim, nugget=claim)
+            self._put_claim(key=nuggets.claim, claim=nuggets)
         elif isinstance(nuggets, list):
             for elem in nuggets:
                 if isinstance(elem, NuggetQuestion):
-                    self.put_nugget(key=elem.question, nugget=elem)
+                    self._put_question(key=elem.question, nugget=elem)
                 elif isinstance(elem, NuggetClaim):
-                    self.put_nugget(key=elem.claim, nugget=elem)
+                    self._put_claim(key=elem.claim, claim=elem)
                 else:
                     raise ValueError(f"Nuggets of type {type(elem)} are not supported.")
-
         else:
             raise ValueError(f"Nuggets of type {type(nuggets)} are not supported.")
 
@@ -716,13 +789,17 @@ class NuggetBank(BaseModel):
         return nugget_dictionary
 
     def index_nuggets(self):
-        """Compute a flat index view of all nuggets in the bank."""
-
+        """Compute a read-only flat index view of all nuggets (questions + claims) in the bank."""
+        internal_dict: Dict[str, NuggetQuestion | NuggetClaim] = {}
         if self.nugget_bank is not None:
-            self.all_nuggets_view = dict()
-            self.all_nuggets_view = NuggetBank.index_nuggets_internal(
-                self.all_nuggets_view, self.nugget_bank.values()
+            internal_dict = NuggetBank.index_nuggets_internal(
+                internal_dict, list(self.nugget_bank.values())
             )
+        if self.claim_bank is not None:
+            internal_dict = NuggetBank.index_nuggets_internal(
+                internal_dict, list(self.claim_bank.values())
+            )
+        self.all_nuggets_view = MappingProxyType(internal_dict)
 
     def model_post_init(self, __context):
         """Assign a hash-based query_id from the title_query if none is provided."""
@@ -731,10 +808,10 @@ class NuggetBank(BaseModel):
         self.index_nuggets()
 
 
-def question_nugget_to_dict(nugget: NuggetQuestion | NuggetClaim) -> Dict[str, Any]:
+def nugget_to_dict(nugget: NuggetQuestion | NuggetClaim) -> Dict[str, Any]:
+    """Convert a nugget (question or claim) to legacy v1 dict format."""
     if isinstance(nugget, NuggetQuestion):
-
-        return {
+        result: Dict[str, Any] = {
             "query_id": nugget.query_id,
             "question_text": nugget.question,
             "question_id": nugget.question_id,
@@ -747,10 +824,25 @@ def question_nugget_to_dict(nugget: NuggetQuestion | NuggetClaim) -> Dict[str, A
                 for answer in (nugget.answers or {}).values()
             ],
         }
+        if nugget.references:
+            result["references"] = [ref.doc_id for ref in nugget.references]
+        return result
     elif isinstance(nugget, NuggetClaim):
-        raise RuntimeError("NuggetClaim not implemented")
+        result = {
+            "query_id": nugget.query_id,
+            "claim_text": nugget.claim,
+            "claim_id": nugget.claim_id,
+            "info": {"aggregator_type": nugget.aggregator_type or AggregatorType.OR},
+        }
+        if nugget.references:
+            result["references"] = [ref.doc_id for ref in nugget.references]
+        return result
     else:
         raise RuntimeError(f"Don't know nugget type {type(nugget)}. Received: {nugget}")
+
+
+# Backwards compatibility alias
+question_nugget_to_dict = nugget_to_dict
 
 
 # def get_doc_id_to_nuggets_mapping(nuggets:List[NuggetQuestion])->Dict[str, List[NuggetQuestion]]:
@@ -886,16 +978,12 @@ def load_nugget_bank_json(source: Union[str, Path, TextIO]) -> NuggetBank:
 def filter_questions_with_no_answers(
     questions: Dict[str, NuggetQuestion | NuggetClaim],
 ) -> Dict[str, NuggetQuestion | NuggetClaim]:
-    """Filter out questions that have no answers or sub-nuggets."""
+    """Filter out questions that have no answers. Claims always pass (they're fact assertions)."""
     return {
         k: v
         for k, v in questions.items()
-        if (isinstance(v, NuggetQuestion) and v.answers and len(v.answers) > 0)
-        or (
-            isinstance(v, NuggetClaim)
-            and v.related_answer
-            and len(v.related_answer) > 0
-        )
+        if isinstance(v, NuggetClaim)  # Claims always pass
+        or (isinstance(v, NuggetQuestion) and v.answers and len(v.answers) > 0)
     }
 
 

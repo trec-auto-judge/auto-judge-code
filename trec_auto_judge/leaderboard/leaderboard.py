@@ -4,11 +4,16 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Set
+import sys
+from typing import Any, Callable, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Tuple, Set
+
+from trec_auto_judge.utils import format_preview
+from .verification import LeaderboardVerification, LeaderboardVerificationError
 
 MeasureName = str
 AggFn = Callable[[Sequence[Any]], Any]
 CastFn = Callable[[Any], Any]
+OnMissing = Literal["default", "warn", "error", "fix_aggregate"]
 
 
 #  ==== DataClasses for data storage and serialization ===  
@@ -35,7 +40,7 @@ class Leaderboard:
     measures: Tuple[MeasureName, ...]
     entries: Tuple[LeaderboardEntry, ...]
     all_topic_id: str = "all"
-
+    
     def all_measure_names(self) -> Tuple[MeasureName, ...]:
         """Return measure names in schema order."""
         return self.measures
@@ -56,7 +61,10 @@ class Leaderboard:
         print(f"Writing leaderboard to {output.absolute()}")   # ToDo: use a logger
         output.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-
+    def verify(self,  on_missing:OnMissing, expected_topic_ids: Sequence[str], warn:Optional[bool]=False):
+        LeaderboardVerification(leaderboard = self, warn=warn, expected_topic_ids=expected_topic_ids, on_missing=on_missing) \
+            .complete_measures(include_all_row=True) \
+            .complete_topics()
 @dataclass(frozen=True)
 class MeasureSpec:
     """
@@ -65,10 +73,13 @@ class MeasureSpec:
     - `name`: key used in entry.values and output.
     - `aggregate`: computes the synthetic per-run value from per-topic values.
     - `cast`: normalizes/validates per-topic values when rows are added (output type will be input for aggregate function). Default no-op.
+    - `default`: value used for missing (run_id, topic_id) pairs when build() fills gaps.
+      Must be the same type as cast's output (i.e., valid input for aggregate). If None, no default is available.
     """
     name: MeasureName
     aggregate: AggFn
     cast: CastFn = lambda x: x
+    default: Any = None
 
 
 @dataclass(frozen=True)
@@ -177,23 +188,60 @@ class LeaderboardBuilder:
         return tuple(self._rows)
 
 
-    def build(self) -> Leaderboard:
+    def _detect_missing_run_topic(
+        self,
+        expected_topic_ids: Sequence[str],
+    ) -> List[tuple[str, str]]:
         """
-        Build a Leaderboard with synthetic per-run `all_topic_id` rows.
+        Detect missing (run_id, topic_id) pairs.
 
-        The returned Leaderboard contains:
-        - all per-topic rows that were added
-        - plus one additional row per run_id with topic_id == spec.all_topic_id
+        Returns list of (run_id, topic_id) tuples for each run that is missing
+        expected topics.
+        """
+        existing_run_topic: Dict[str, Set[str]] = defaultdict(set)
+        for e in self._rows:
+            if e.topic_id != self.spec.all_topic_id:
+                existing_run_topic[e.run_id].add(e.topic_id)
+
+        expected_set = set(expected_topic_ids)
+        missing: List[tuple[str, str]] = []
+        for run_id in existing_run_topic.keys():
+            for topic_id in expected_set - existing_run_topic[run_id]:
+                missing.append((run_id, topic_id))
+        return missing
+
+    def _compute_aggregates(
+        self,
+        entries: List[LeaderboardEntry],
+        phantom_defaults: List[tuple[str, str]],
+    ) -> List[LeaderboardEntry]:
+        """
+        Compute "all" row aggregates from entries and phantom defaults.
+
+        Args:
+            entries: Per-topic entries to aggregate
+            phantom_defaults: (run_id, topic_id) pairs to include in aggregation
+                using MeasureSpec.default values (no actual entries created)
+
+        Returns:
+            List of aggregate "all" row entries, one per run_id
         """
         by_run: Dict[str, Dict[MeasureName, List[Any]]] = defaultdict(lambda: defaultdict(list))
 
-        for e in self._rows:
+        # Collect values from actual entries
+        for e in entries:
             if e.topic_id == self.spec.all_topic_id:
-                # Avoid accidental double-aggregation if someone added "all" rows manually.
                 continue
             for k, v in e.values.items():
                 by_run[e.run_id][k].append(v)
 
+        # Include phantom defaults
+        for run_id, _ in phantom_defaults:
+            for ms in self.spec.measures:
+                if ms.default is not None:
+                    by_run[run_id][ms.name].append(ms.default)
+
+        # Build aggregate rows
         all_rows: List[LeaderboardEntry] = []
         for run_id, m2vals in by_run.items():
             agg_vals: Dict[MeasureName, Any] = {}
@@ -203,174 +251,65 @@ class LeaderboardBuilder:
                     agg_vals[ms.name] = ms.aggregate(vals)
             all_rows.append(LeaderboardEntry(run_id=run_id, topic_id=self.spec.all_topic_id, values=agg_vals))
 
+        return all_rows
+
+    def build(
+        self,
+        expected_topic_ids: Optional[Sequence[str]] = None,
+        on_missing: OnMissing = "default",
+    ) -> Leaderboard:
+        """
+        Build a Leaderboard with synthetic per-run `all_topic_id` rows.
+
+        The returned Leaderboard contains:
+        - all per-topic rows that were added
+        - plus one additional row per run_id with topic_id == spec.all_topic_id
+
+        Args:
+            expected_topic_ids: If provided, handles missing (run_id, topic_id) pairs.
+            on_missing: When expected_topic_ids is provided and gaps exist:
+                - "default": silently create per-topic entries with defaults
+                - "warn": create per-topic entries with defaults and print warning
+                - "fix_aggregate": only fill defaults for "all" row aggregation (no per-topic entries)
+                - "error": raise ValueError listing missing (run_id, topic_id) pairs
+        """
+        # Step 1: Detect missing pairs
+        all_missing: List[tuple[str, str]] = []
+        if expected_topic_ids is not None:
+            all_missing = self._detect_missing_run_topic(expected_topic_ids)
+
+        # Step 2: Handle missing based on mode
+        filled_rows: List[LeaderboardEntry] = []
+        phantom_defaults: List[tuple[str, str]] = []
+
+        if all_missing:
+            formatted_pairs = [f"({r}, {t})" for r, t in sorted(all_missing)]
+            if on_missing == "error":
+                raise ValueError(
+                    f"Missing leaderboard entries for {len(all_missing)} (run_id, topic_id) pair(s): {format_preview(formatted_pairs)}"
+                )
+
+            if on_missing == "warn":
+                print(f"Leaderboard Warning: {len(all_missing)} missing entries: {format_preview(formatted_pairs)}", file=sys.stderr)
+
+            if on_missing in ("default", "warn"):
+                # Create actual per-topic entries
+                default_values = {ms.name: ms.default for ms in self.spec.measures if ms.default is not None}
+                if default_values:
+                    for run_id, topic_id in all_missing:
+                        filled_rows.append(LeaderboardEntry(run_id=run_id, topic_id=topic_id, values=default_values))
+            elif on_missing == "fix_aggregate":
+                phantom_defaults = all_missing
+
+        # Step 3: Compute aggregates
+        all_entries = self._rows + filled_rows
+        all_rows = self._compute_aggregates(all_entries, phantom_defaults)
+
         return Leaderboard(
             measures=self.spec.names,
-            entries=tuple(self._rows + all_rows),
+            entries=tuple(all_entries + all_rows),
             all_topic_id=self.spec.all_topic_id,
         )
-
-
-# === Verification ====
-
-
-
-@dataclass(frozen=True)
-class VerificationError(Exception):
-    """Raised when leaderboard completeness constraints are violated."""
-    message: str
-
-    def __str__(self) -> str:
-        return self.message
-
-
-def verify_complete_measures(
-    *,
-    measure_names: Sequence[MeasureName],
-    entries: Iterable[LeaderboardEntry],
-    all_topic_id: str = "all",
-    include_all_row: bool = True,
-) -> None:
-    """
-    Verify that every (run_id, topic_id) entry contains all measures.
-
-    By default, also checks the synthetic all_topic_id rows if present.
-    """
-    required = set(measure_names)
-
-    missing_reports: list[str] = []
-    for e in entries:
-        if not include_all_row and e.topic_id == all_topic_id:
-            continue
-        present = set(e.values.keys())
-        missing = required - present
-        extra = present - required
-        if missing or extra:
-            parts = []
-            if missing:
-                parts.append(f"missing={sorted(missing)}")
-            if extra:
-                parts.append(f"extra={sorted(extra)}")
-            missing_reports.append(f"{e.run_id}/{e.topic_id}: " + ", ".join(parts))
-
-    if missing_reports:
-        preview = "\n  ".join(missing_reports[:25])
-        more = "" if len(missing_reports) <= 25 else f"\n  ... ({len(missing_reports) - 25} more)"
-        raise VerificationError(
-            "Leaderboard entries do not match the measure schema:\n  " + preview + more
-        )
-
-
-def verify_complete_topics_per_run(
-    *,
-    entries: Iterable[LeaderboardEntry],
-    all_topic_id: str = "all",
-    include_all_row: bool = False,
-) -> None:
-    """
-    Verify that all runs have the same set of topic_ids.
-
-    This catches cases where run A has topics {t1,t2} but run B has {t1,t3},
-    which makes per-run comparisons misleading.
-    """
-    by_run: dict[str, Set[str]] = {}
-    for e in entries:
-        if not include_all_row and e.topic_id == all_topic_id:
-            continue
-        by_run.setdefault(e.run_id, set()).add(e.topic_id)
-
-    if not by_run:
-        return
-
-    runs = sorted(by_run.keys())
-    reference_run = runs[0]
-    reference_topics = by_run[reference_run]
-
-    diffs: list[str] = []
-    for r in runs[1:]:
-        tset = by_run[r]
-        missing = reference_topics - tset
-        extra = tset - reference_topics
-        if missing or extra:
-            parts = []
-            if missing:
-                parts.append(f"missing_topics={sorted(missing)}")
-            if extra:
-                parts.append(f"extra_topics={sorted(extra)}")
-            diffs.append(f"{r} vs {reference_run}: " + ", ".join(parts))
-
-    if diffs:
-        preview = "\n  ".join(diffs[:25])
-        more = "" if len(diffs) <= 25 else f"\n  ... ({len(diffs) - 25} more)"
-        raise VerificationError(
-            f"Runs do not share the same topic set (reference={reference_run}):\n  {preview}{more}"
-        )
-
-
-
-def verify_leaderboard_topics(
-    *,
-    expected_topic_ids: Sequence[str],
-    entries: Iterable["LeaderboardEntry"],
-    all_topic_id: str = "all",
-    include_all_row: bool = False,
-    require_no_extras: bool = False,
-) -> None:
-    expected = set(expected_topic_ids)
-    seen = set()
-
-    for e in entries:
-        if not include_all_row and e.topic_id == all_topic_id:
-            continue
-        if e.topic_id in expected:
-            seen.add(e.topic_id)
-
-    missing = expected - seen
-    if missing:
-        raise ValueError(f"Missing leaderboard entries for {len(missing)} topic_id(s), e.g. {sorted(missing)[:5]}")
-
-    if require_no_extras:
-        extras = {e.topic_id for e in entries if (include_all_row or e.topic_id != all_topic_id)} - expected
-        if include_all_row:
-            extras = extras - {all_topic_id}
-        if extras:
-            raise ValueError(f"Found unexpected topic_id(s) in leaderboard, e.g. {sorted(extras)[:5]}")
-
-from typing import Optional, Sequence
-
-def verify_all(
-    *,
-    measure_names: Sequence[MeasureName],
-    entries: Iterable["LeaderboardEntry"],
-    all_topic_id: str = "all",
-    require_all_row_complete: bool = True,
-    require_same_topics_per_run: bool = True,
-    expected_topic_ids: Optional[Sequence[str]] = None,
-    require_no_extra_topics: bool = True,
-):
-    verify_complete_measures(
-        measure_names=measure_names,
-        entries=entries,
-        all_topic_id=all_topic_id,
-        include_all_row=require_all_row_complete,
-    )
-
-    if expected_topic_ids is not None:
-        verify_leaderboard_topics(
-            expected_topic_ids=expected_topic_ids,
-            entries=entries,
-            all_topic_id=all_topic_id,
-            include_all_row=False,
-            require_no_extras=require_no_extra_topics,
-        )
-
-    if require_same_topics_per_run:
-        verify_complete_topics_per_run(
-            entries=entries,
-            all_topic_id=all_topic_id,
-            include_all_row=False,
-        )
-
-
 
 
 #  === Example aggregators (optional helpers) ====

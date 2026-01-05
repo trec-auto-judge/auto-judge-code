@@ -12,7 +12,7 @@ class TaskType(str, Enum):
     """Ragtime tasks"""
     MULTILINGUAL = "multilingual"
     ENGLISH = "english"
-
+    RAG = "rag"
 
 class ReportMetaData(BaseModel):
     """Report meta data for requested reports"""
@@ -106,6 +106,7 @@ ReportSentence: TypeAlias = RagtimeReportSentence | NeuclirReportSentence | Rag2
 class Report(BaseModel):
     is_ragtime:bool = True
     metadata:ReportMetaData
+    evaldata: Optional[Dict[str,Any]] = None
     responses:Optional[List[NeuclirReportSentence]|List[RagtimeReportSentence]|List[Rag24ReportSentence]]=None
     answer:Optional[List[NeuclirReportSentence]|List[RagtimeReportSentence]|List[Rag24ReportSentence]]=None
     path:Optional[Path]=None
@@ -118,7 +119,7 @@ class Report(BaseModel):
 
         # RAGTIME validation
         if self.responses is None:
-            raise RuntimeError(f"Report does not contain responses or amswer: {self}")
+            raise RuntimeError(f"Report does not contain responses or answer: {self}")
 
         # Expose as RAG format
         if self.answer is None:
@@ -267,7 +268,7 @@ def write_pydantic_json_list(objs: List[BaseModel], out: Union[str, Path, TextIO
         # Assume it's already a valid TextIO stream
         for obj in objs:
             line = json.dumps(obj.model_dump(exclude_none=True), separators=(",", ":"), indent=None)
-            f.write(line + "\n")
+            out.write(line + "\n")
 
 
 

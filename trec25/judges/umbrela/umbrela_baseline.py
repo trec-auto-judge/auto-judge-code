@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from trec_auto_judge import *
+from trec_auto_judge.nugget_data.nugget_data import *
 
 import dspy
 from textwrap import dedent
@@ -8,7 +9,8 @@ import asyncio
 from typing import *
 from pydantic import BaseModel
 
-from trec_auto_judge.llm import run_dspy_batch
+from trec_auto_judge.llm.minima_llm_dspy import run_dspy_batch
+from trec_auto_judge import OpenAIMinimaLlm
 
 
 class UmbrelaAnnotation(BaseModel):
@@ -133,10 +135,24 @@ def umbrela_to_qrels(
 
 
 class UmbrelaJudge(AutoJudge):
+    def create_nuggets(
+        self,
+        rag_responses: Sequence[Report],
+        rag_topics: Sequence["Request"],
+        llm_config: MinimaLlmConfig,
+        nugget_banks: Optional["NuggetBanks"] = None,
+        **kwargs
+    ) -> Optional["NuggetBanks"]:
+        return None
+
+            
     def judge(
         self,
         rag_responses: Sequence[Report],
         rag_topics: Sequence[Request],
+        llm_config: MinimaLlmConfig,
+        nugget_banks: Optional[NuggetBanks] = None,
+        **kwargs
     ) -> tuple[Leaderboard, Optional[Qrels]]:
         """
         Umbrela response assessor using MinimaLLM backend with DSPy.
@@ -193,14 +209,9 @@ class UmbrelaJudge(AutoJudge):
                 },
             )
 
-            verify_all(
-                measure_names=UMBRELA_SPEC.names,
-                entries=b.entries(),
-                all_topic_id=UMBRELA_SPEC.all_topic_id,
-                require_all_row_complete=False,
-                require_same_topics_per_run=True,
-            )
-            return b.build()
+            leaderboard = b.build()
+            LeaderboardVerification(leaderboard).complete_measures(include_all_row=False).same_topics_per_run()
+            return leaderboard
 
         # Prepare input prompts
         prompt_input = prepare_prompts()
@@ -210,13 +221,14 @@ class UmbrelaJudge(AutoJudge):
         prompt_output = asyncio.run(run_dspy_batch(
             Umbrela,
             prompt_input,
-            Umbrela.convert_output
+            Umbrela.convert_output,
+
+            backend=OpenAIMinimaLlm(llm_config)
         ))
         print("Debug out", "\n".join(str(p) for p in prompt_output[0:1]))
 
         leaderboard = umbrela_to_leaderboard(prompt_output=prompt_output)
         qrels = umbrela_to_qrels(prompt_output)
-        # qrels = None
         return (leaderboard, qrels)
 
 

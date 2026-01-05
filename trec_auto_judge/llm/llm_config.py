@@ -162,6 +162,7 @@ class MinimaLlmConfig:
     -----------------
     max_attempts:
         Maximum number of attempts per request (including initial attempt).
+        Set to 0 for infinite retries (will retry forever until success or Ctrl-C).
 
     base_backoff_s:
         Base delay for exponential backoff (seconds).
@@ -176,7 +177,7 @@ class MinimaLlmConfig:
     -----------------------
     cooldown_floor_s, cooldown_cap_s, cooldown_halflife_s:
         Parameters controlling a global cooldown after overload signals such as
-        HTTP 429/503/504. Cooldown decays with the given half-life.
+        HTTP 429/502/503/504. Cooldown decays with the given half-life.
 
     HTTP
     ----
@@ -204,7 +205,7 @@ class MinimaLlmConfig:
     max_backoff_s: float = 20.0
     jitter: float = 0.2
 
-    # Cooldown after overload (429/503/504)
+    # Cooldown after overload (429/502/503/504)
     cooldown_floor_s: float = 0.0
     cooldown_cap_s: float = 30.0
     cooldown_halflife_s: float = 20.0
@@ -214,6 +215,15 @@ class MinimaLlmConfig:
 
     # Cache
     cache_dir: Optional[str] = None  # None = disabled
+
+    # ----------------------------
+    # Config modification
+    # ----------------------------
+
+    def with_model(self, model: str) -> "MinimaLlmConfig":
+        """Return a new config with the model replaced."""
+        from dataclasses import replace
+        return replace(self, model=model)
 
     # ----------------------------
     # Backward compatibility properties
@@ -296,19 +306,83 @@ class MinimaLlmConfig:
             rpm=_env_int("RPM", 600),
             timeout_s=_env_float("TIMEOUT_S", 60.0),
             # retry
-            max_attempts=_env_int("MAX_ATTEMPTS", 6),
+            max_attempts=_env_int("MAX_ATTEMPTS", 50),
             base_backoff_s=_env_float("BASE_BACKOFF_S", 0.5),
             max_backoff_s=_env_float("MAX_BACKOFF_S", 20.0),
             jitter=_env_float("JITTER", 0.2),
             # cooldown
             cooldown_floor_s=_env_float("COOLDOWN_FLOOR_S", 0.0),
-            cooldown_cap_s=_env_float("COOLDOWN_CAP_S", 30.0),
+            cooldown_cap_s=_env_float("COOLDOWN_CAP_S", 60.0),
             cooldown_halflife_s=_env_float("COOLDOWN_HALFLIFE_S", 20.0),
             # http
             compress_gzip=(_env_int("COMPRESS_GZIP", 0) != 0),
             # cache
             cache_dir=_env_str("CACHE_DIR"),
         )
+
+    @classmethod
+    def from_yaml(cls, path: "Path") -> "MinimaLlmConfig":
+        """
+        Load MinimaLlmConfig from a YAML file.
+
+        Supports direct config format with base_url and model:
+
+            base_url: "http://localhost:8000/v1"
+            model: "llama-3.3-70b-instruct"
+            api_key: "optional-key"  # optional
+
+        Args:
+            path: Path to the YAML config file
+
+        Returns:
+            MinimaLlmConfig instance
+
+        Raises:
+            FileNotFoundError: If the config file doesn't exist
+            ValueError: If required fields (base_url, model) are missing
+        """
+        import yaml
+        from pathlib import Path
+
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Config file not found: {path}")
+
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+
+        if "base_url" not in data:
+            raise ValueError(f"Missing required field 'base_url' in {path}")
+        if "model" not in data:
+            raise ValueError(f"Missing required field 'model' in {path}")
+
+        return cls(
+            base_url=cls._normalize_base_url(data["base_url"]),
+            model=data["model"],
+            api_key=data.get("api_key", ""),
+        )
+
+    # ----------------------------
+    # Pickle support (exclude api_key for security)
+    # ----------------------------
+
+    def __getstate__(self) -> dict:
+        """Exclude api_key from pickled state for security."""
+        state = {k: getattr(self, k) for k in self.__dataclass_fields__}
+        state.pop("api_key", None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore state, re-fetching api_key from environment."""
+        # Re-fetch api_key from environment variables
+        api_key = _first_non_none(
+            _env_str("OPENAI_API_KEY"),
+            _env_str("OPENAI_TOKEN"),
+        )
+        # Frozen dataclass requires object.__setattr__
+        for key, value in state.items():
+            object.__setattr__(self, key, value)
+        object.__setattr__(self, "api_key", api_key)
 
     def describe(self) -> str:
         """

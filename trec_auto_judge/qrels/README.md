@@ -141,23 +141,48 @@ def resolve_doc_id(record):
 
 Qrels verification is separate from construction.
 
-### Topic coverage verification
+### Quick Verification via `.verify()`
+
+The simplest way to verify qrels:
 
 ```python
-verify_qrels_topics(
-    expected_topic_ids=[t.query_id for t in topics],
-    qrels=qrels,
-    require_no_extras=True,
+topic_ids = [t.request_id for t in topics]
+qrels.verify(
+    expected_topic_ids=topic_ids,
+    warn=False  # raise exceptions on failure
 )
 ```
 
-This enforces two invariants:
+Parameters:
+- `expected_topic_ids`: List of topic IDs that should be present
+- `warn`: If `True`, print warnings instead of raising exceptions
 
-1. **All expected topics are present**
-   Every topic in `expected_topic_ids` must have at least one qrel row.
+### Detailed Verification via `QrelsVerification`
 
-2. **(Optional) No unexpected topics**
-   If `require_no_extras=True`, qrels must not contain topics outside the expected set.
+For more granular control or test cases, use the fluent `QrelsVerification` class:
+
+```python
+from trec_auto_judge.qrels.qrels import QrelsVerification
+
+# Chain specific checks
+QrelsVerification(
+    qrels,
+    expected_topic_ids=topic_ids,
+    warn=False
+).complete_topics().no_extra_topics().no_duplicates()
+
+# Or run all checks
+QrelsVerification(qrels, expected_topic_ids=topic_ids).all()
+```
+
+Available verification methods:
+
+| Method | Description |
+|--------|-------------|
+| `complete_topics()` | Every expected topic has at least one qrel row |
+| `no_extra_topics()` | No qrels for unexpected topics |
+| `no_duplicates()` | No duplicate `(topic_id, doc_id)` pairs |
+| `all()` | Run all checks |
 
 This prevents:
 

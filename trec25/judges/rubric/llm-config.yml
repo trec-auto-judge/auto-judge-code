@@ -1,0 +1,4 @@
+model_preferences:
+  - "llama-3.3-70b-instruct"  # First choice
+  - "llama-3.3-70b-instruct-tp"      # Fallback
+on_no_match: "use_default"
