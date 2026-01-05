@@ -462,9 +462,9 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_submission()
     @click.option("--filebase", type=str, help="Override workflow filebase (e.g., 'output/my-run').", required=False)
     @click.option("--store-nuggets", type=Path, help="Override nugget output path.", required=False)
-    @click.option("--variant", type=str, help="Run a specific named variant from workflow.", required=False)
-    @click.option("--sweep", type=str, help="Run a parameter sweep from workflow.", required=False)
-    @click.option("--all-variants", is_flag=True, help="Run all variants defined in workflow.")
+    @click.option("--variant", type=str, help="Run a named variant from workflow.yml (e.g., --variant $name).", required=False)
+    @click.option("--sweep", type=str, help="Run a parameter sweep from workflow.yml (e.g., --sweep $name).", required=False)
+    @click.option("--all-variants", is_flag=True, help="Run all variants defined in workflow.yml.")
     @click.option("--force-recreate-nuggets", is_flag=True, help="Recreate nuggets even if file exists.")
     def run_cmd(
         workflow: Optional[Path],
