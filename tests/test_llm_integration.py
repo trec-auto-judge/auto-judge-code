@@ -10,6 +10,7 @@ Prerequisites:
 - OPENAI_API_KEY (or OPENAI_TOKEN) must be set
 """
 
+import dataclasses_json
 import pytest
 import os 
 from trec_auto_judge.llm import (
@@ -19,6 +20,7 @@ from trec_auto_judge.llm import (
     MinimaLlmResponse,
     OpenAIMinimaLlm,
 )
+
 
 @pytest.fixture(autouse=True)
 def _prep_env(monkeypatch, tmp_path):
@@ -39,6 +41,7 @@ def _prep_env(monkeypatch, tmp_path):
 async def test_single_request():
     """Test single LLM request doesn't crash"""
     llm = OpenAIMinimaLlm.from_env()
+    print("lm config = ", llm.cfg)
 
     req = MinimaLlmRequest(
         request_id="test-1",
