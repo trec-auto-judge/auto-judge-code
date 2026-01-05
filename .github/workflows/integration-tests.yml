@@ -27,7 +27,7 @@ jobs:
           pip3 install .[test]
           pip3 install --no-deps ir_datasets
           pip3 uninstall -y tira
-          pip3 install 'tira>=0.0.194'
+          pip3 install 'tira>=0.0.194' dspy
       - name: Prepare Integration Tests
         working-directory: ${{github.workspace}}/
         run: |
