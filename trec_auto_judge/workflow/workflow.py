@@ -117,8 +117,11 @@ class ResolvedConfiguration:
     judge_settings: dict[str, Any]
     """Merged settings for judge()."""
 
+    nugget_input_path: Optional[Path]
+    """Resolved path for nugget input (from workflow.nugget_input or None)."""
+
     nugget_output_path: Optional[Path]
-    """Resolved path for nugget output (from nugget_settings.filebase)."""
+    """Resolved path for nugget output (workflow.nugget_output overrides filebase)."""
 
     judge_output_path: Optional[Path]
     """Resolved path for judge output (from judge_settings.filebase)."""
@@ -234,24 +237,47 @@ def _merge_settings(
     return result
 
 
+def _resolve_template_path(
+    template: Optional[str],
+    variables: dict[str, Any],
+) -> Optional[Path]:
+    """Resolve an optional template string to a Path."""
+    if not template:
+        return None
+    resolved = _substitute_template(template, variables)
+    return Path(resolved) if resolved else None
+
+
 def _resolve_output_paths(
     name: str,
     merged_nugget: dict[str, Any],
     merged_judge: dict[str, Any],
-) -> tuple[Optional[Path], Optional[Path]]:
+    nugget_input_override: Optional[str] = None,
+    nugget_output_override: Optional[str] = None,
+) -> tuple[Optional[Path], Optional[Path], Optional[Path]]:
     """
-    Resolve nugget and judge output paths from merged settings.
+    Resolve nugget input/output and judge output paths.
 
     Args:
         name: Configuration name (used as _name variable)
         merged_nugget: Merged nugget settings
         merged_judge: Merged judge settings
+        nugget_input_override: Explicit nugget input path (workflow.nugget_input)
+        nugget_output_override: Explicit nugget output path (workflow.nugget_output)
 
     Returns:
-        Tuple of (nugget_output_path, judge_output_path)
+        Tuple of (nugget_input_path, nugget_output_path, judge_output_path)
     """
     nugget_vars = {"_name": name, **merged_nugget}
-    nugget_output_path = _resolve_filebase(merged_nugget, nugget_vars)
+
+    # Nugget input: explicit override only (no filebase fallback)
+    nugget_input_path = _resolve_template_path(nugget_input_override, nugget_vars)
+
+    # Nugget output: explicit override, then filebase fallback
+    if nugget_output_override:
+        nugget_output_path = _resolve_template_path(nugget_output_override, nugget_vars)
+    else:
+        nugget_output_path = _resolve_filebase(merged_nugget, nugget_vars)
 
     judge_vars = {
         "_name": name,
@@ -260,7 +286,7 @@ def _resolve_output_paths(
     }
     judge_output_path = _resolve_filebase(merged_judge, judge_vars)
 
-    return nugget_output_path, judge_output_path
+    return nugget_input_path, nugget_output_path, judge_output_path
 
 
 def resolve_default(workflow: Workflow) -> ResolvedConfiguration:
@@ -279,8 +305,10 @@ def resolve_default(workflow: Workflow) -> ResolvedConfiguration:
     merged_nugget = _merge_settings(workflow.settings, workflow.nugget_settings)
     merged_judge = _merge_settings(workflow.settings, workflow.judge_settings)
 
-    nugget_output_path, judge_output_path = _resolve_output_paths(
-        name, merged_nugget, merged_judge
+    nugget_input_path, nugget_output_path, judge_output_path = _resolve_output_paths(
+        name, merged_nugget, merged_judge,
+        nugget_input_override=workflow.nugget_input,
+        nugget_output_override=workflow.nugget_output,
     )
 
     return ResolvedConfiguration(
@@ -288,6 +316,7 @@ def resolve_default(workflow: Workflow) -> ResolvedConfiguration:
         settings=workflow.settings,
         nugget_settings=merged_nugget,
         judge_settings=merged_judge,
+        nugget_input_path=nugget_input_path,
         nugget_output_path=nugget_output_path,
         judge_output_path=judge_output_path,
     )
@@ -326,8 +355,10 @@ def resolve_variant(workflow: Workflow, variant_name: str) -> ResolvedConfigurat
         workflow.settings, workflow.judge_settings, variant_shared, variant_judge
     )
 
-    nugget_output_path, judge_output_path = _resolve_output_paths(
-        variant_name, merged_nugget, merged_judge
+    nugget_input_path, nugget_output_path, judge_output_path = _resolve_output_paths(
+        variant_name, merged_nugget, merged_judge,
+        nugget_input_override=workflow.nugget_input,
+        nugget_output_override=workflow.nugget_output,
     )
 
     return ResolvedConfiguration(
@@ -335,6 +366,7 @@ def resolve_variant(workflow: Workflow, variant_name: str) -> ResolvedConfigurat
         settings=_merge_settings(workflow.settings, variant_shared),
         nugget_settings=merged_nugget,
         judge_settings=merged_judge,
+        nugget_input_path=nugget_input_path,
         nugget_output_path=nugget_output_path,
         judge_output_path=judge_output_path,
     )
@@ -391,8 +423,10 @@ def resolve_sweep(workflow: Workflow, sweep_name: str) -> list[ResolvedConfigura
             workflow.settings, workflow.judge_settings, fixed_params, sweep_judge, combo
         )
 
-        nugget_output_path, judge_output_path = _resolve_output_paths(
-            sweep_name, merged_nugget, merged_judge
+        nugget_input_path, nugget_output_path, judge_output_path = _resolve_output_paths(
+            sweep_name, merged_nugget, merged_judge,
+            nugget_input_override=workflow.nugget_input,
+            nugget_output_override=workflow.nugget_output,
         )
 
         results.append(ResolvedConfiguration(
@@ -400,6 +434,7 @@ def resolve_sweep(workflow: Workflow, sweep_name: str) -> list[ResolvedConfigura
             settings=_merge_settings(workflow.settings, fixed_params, combo),
             nugget_settings=merged_nugget,
             judge_settings=merged_judge,
+            nugget_input_path=nugget_input_path,
             nugget_output_path=nugget_output_path,
             judge_output_path=judge_output_path,
         ))

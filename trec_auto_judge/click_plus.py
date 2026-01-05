@@ -466,6 +466,8 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @click.option("--sweep", type=str, help="Run a parameter sweep from workflow.yml (e.g., --sweep $name).", required=False)
     @click.option("--all-variants", is_flag=True, help="Run all variants defined in workflow.yml.")
     @click.option("--force-recreate-nuggets", is_flag=True, help="Recreate nuggets even if file exists.")
+    @click.option("--create-nuggets/--no-create-nuggets", default=None, help="Override workflow create_nuggets flag.")
+    @click.option("--judge/--no-judge", "do_judge", default=None, help="Override workflow judge flag.")
     def run_cmd(
         workflow: Optional[Path],
         rag_responses: Iterable[Report],
@@ -479,6 +481,8 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         sweep: Optional[str],
         all_variants: bool,
         force_recreate_nuggets: bool,
+        create_nuggets: Optional[bool],
+        do_judge: Optional[bool],
     ):
         """Run judge according to workflow.yml (default command)."""
         # Load workflow
@@ -546,16 +550,30 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
                 if auto_judge_type:
                     nugget_banks_type = auto_judge_type
 
+            # Resolve nugget banks: CLI --nugget-banks, then workflow nugget_input
+            effective_nugget_banks = nugget_banks
+            if effective_nugget_banks is None and config.nugget_input_path:
+                from .nugget_data.io import load_nugget_banks_generic
+                if config.nugget_input_path.exists():
+                    click.echo(f"Loading nuggets from workflow nugget_input: {config.nugget_input_path}", err=True)
+                    effective_nugget_banks = load_nugget_banks_generic(
+                        config.nugget_input_path, nugget_banks_type
+                    )
+
+            # CLI flags override workflow settings (None means use workflow default)
+            effective_create_nuggets = create_nuggets if create_nuggets is not None else wf.create_nuggets
+            effective_do_judge = do_judge if do_judge is not None else wf.judge
+
             run_judge(
                 auto_judge=auto_judge,
                 rag_responses=rag_responses,
                 rag_topics=topics_list,
                 llm_config=resolved_llm_config,
-                nugget_banks=nugget_banks,
+                nugget_banks=effective_nugget_banks,
                 judge_output_path=judge_output_path,
                 nugget_output_path=nugget_output_path,
-                do_create_nuggets=wf.create_nuggets,
-                do_judge=wf.judge,
+                do_create_nuggets=effective_create_nuggets,
+                do_judge=effective_do_judge,
                 settings=validated_settings,
                 nugget_settings=config.nugget_settings,
                 judge_settings=config.judge_settings,
