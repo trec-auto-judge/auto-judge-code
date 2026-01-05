@@ -20,6 +20,10 @@ class TestExportCorpora(unittest.TestCase):
             target_dir = str(tmp) + "/spot-check"
             copytree(TREC_25_DATA / "spot-check-dataset", target_dir)
             target_path = Path(target_dir) / "queries.jsonl"
+            ff = (Path(target_dir) / "README.md").read_text()
+            ff = ff.replace('#  ir_datasets_id: "cranfield"', '  ir_datasets_id: "cranfield"')
+            (Path(target_dir) / "README.md").write_text(ff)
+            target_path.unlink()
             self.assertFalse(target_path.is_file())
 
             runner = CliRunner()

@@ -748,6 +748,7 @@ class OpenAIMinimaLlm(AsyncMinimaLlmBackend):
         h: Dict[str, str] = {
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": "trec-auto-judge-minimalllm"
         }
         if self.cfg.api_key is not None:
             h["Authorization"] = f"Bearer {self.cfg.api_key}"
