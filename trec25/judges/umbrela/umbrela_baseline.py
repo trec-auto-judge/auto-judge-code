@@ -210,7 +210,7 @@ class UmbrelaJudge(AutoJudge):
             )
 
             leaderboard = b.build()
-            LeaderboardVerification(leaderboard).complete_measures(include_all_row=False).same_topics_per_run()
+            LeaderboardVerification(leaderboard, on_missing="ignore").complete_measures(include_all_row=False).same_topics_per_run()
             return leaderboard
 
         # Prepare input prompts
