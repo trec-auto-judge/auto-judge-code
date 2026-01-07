@@ -580,22 +580,42 @@ async def run_dspy_batch(
     with dspy.context(lm=lm):
         predictor = predictor_class(signature_class)
 
+        async def invoke_predictor(pred, **kw):
+            """Invoke predictor with version-tolerant async/sync handling."""
+            import functools
+            import inspect
+
+            # Try async methods first: acall, aforward
+            for method_name in ("acall", "aforward"):
+                method = getattr(pred, method_name, None)
+                if callable(method):
+                    result = method(**kw)
+                    # Await if coroutine, otherwise return value directly
+                    if inspect.isawaitable(result):
+                        return await result
+                    return result
+
+            # Sync fallback: __call__ via run_in_executor to not block event loop
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, functools.partial(pred, **kw))
+
         # Process each annotation
         async def process_one(obj: BaseModel) -> BaseModel:
             # Extract input kwargs from annotation object
-            kwargs = obj.model_dump(include=set(input_fields))
+            kw = obj.model_dump(include=set(input_fields))
 
             last_error: Optional[Exception] = None
-            force_refresh_token: Optional[contextvars.Token[bool]] = None
 
             for attempt in range(parse_retry_limit):
+                # Per-attempt force_refresh token (scoped to this attempt)
+                force_refresh_token: Optional[contextvars.Token[bool]] = None
                 try:
                     # On retry, force refresh to bypass cached response that caused error
                     if attempt > 0:
                         force_refresh_token = set_force_refresh(True)
 
                     # Run prediction
-                    result = await predictor.acall(**kwargs)
+                    result = await invoke_predictor(predictor, **kw)
 
                     # Update annotation with results
                     output_converter(result, obj)
@@ -614,9 +634,9 @@ async def run_dspy_batch(
                     last_error = e
                     continue
                 finally:
+                    # Always reset force_refresh token if set
                     if force_refresh_token is not None:
                         reset_force_refresh(force_refresh_token)
-                        force_refresh_token = None
 
             # All retries exhausted
             raise last_error  # type: ignore[misc]
