@@ -10,4 +10,8 @@ RUN pip3 install -r /tmp/requirements.txt
 
 RUN pip3 install git+https://github.com/trec-auto-judge/auto-judge-code.git
 
+ENV OPENAI_BASE_URL=does-not-exist
+ENV OPENAI_MODEL=does-not-exist
+ENV OPENAI_API_KEY=does-not-exist
+
 ADD retrieval-judge.py /retrieval-judge.py
