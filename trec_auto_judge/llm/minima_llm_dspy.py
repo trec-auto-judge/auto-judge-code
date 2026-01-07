@@ -34,10 +34,21 @@ def _import_adapter_parse_error():
         except (ImportError, AttributeError):
             continue
 
-    raise ImportError(
-        "Could not locate AdapterParseError in any known DSPy location. "
-        "DSPy version may have changed its adapter exception layout again."
-    )
+    # Fallback: define compatible exception for older DSPy versions
+    dspy_version = getattr(dspy, "__version__", "unknown")
+    print(f"Warning: AdapterParseError not found in DSPy {dspy_version}, using fallback class")
+
+    class AdapterParseError(Exception):
+        """Fallback AdapterParseError for DSPy versions without this exception."""
+        def __init__(self, adapter_name=None, signature=None, lm_response=None,
+                     parsed_result=None, message=None, **kwargs):
+            self.adapter_name = adapter_name
+            self.signature = signature
+            self.lm_response = lm_response
+            self.parsed_result = parsed_result
+            super().__init__(message or "Adapter parse error")
+
+    return AdapterParseError
 
 
 AdapterParseError = _import_adapter_parse_error()
