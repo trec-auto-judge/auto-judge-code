@@ -10,7 +10,6 @@ Prerequisites:
 - OPENAI_API_KEY (or OPENAI_TOKEN) must be set
 """
 
-import dataclasses_json
 import pytest
 import os 
 from trec_auto_judge.llm import (
