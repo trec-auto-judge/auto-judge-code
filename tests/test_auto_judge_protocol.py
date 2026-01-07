@@ -46,15 +46,17 @@ class TestAutoJudgeProtocoll(unittest.TestCase):
         runner = CliRunner()
 
         with TemporaryDirectory() as tmp_dir:
-            target_file = Path(tmp_dir) / "leaderboard.trec"
-            result = runner.invoke(cmd, ["--rag-responses", TREC_25_DATA / "spot-check-dataset" / "runs", "--output", str(target_file)])
+            filebase = Path(tmp_dir) / "leaderboard"
+            result = runner.invoke(cmd, ["judge", "--rag-responses", str(TREC_25_DATA / "spot-check-dataset" / "runs"), "--output", str(filebase)])
 
             print(result.output)
             print(result.exception)
             self.assertIsNone(result.exception)
             self.assertEqual(result.exit_code, 0)
-            self.assertTrue(target_file.is_file())
-            actual_leaderboard = target_file.read_text()
+            # Output file gets .judgment.json suffix added by resolve_judgment_file_paths()
+            leaderboard_file = filebase.parent / f"{filebase.name}.judgment.json"
+            self.assertTrue(leaderboard_file.is_file())
+            actual_leaderboard = leaderboard_file.read_text()
             self.assertIn("measure-01\t28\t1", actual_leaderboard)
             self.assertIn("measure-01\tall\t1.0", actual_leaderboard)
 
