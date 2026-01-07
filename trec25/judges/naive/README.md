@@ -7,5 +7,5 @@ This is the code for a naive auto-judge assessor that provides random or naive j
 The `./naive-baseline.py --help` command provides an overview of the usage. For instance, to process the spot-check dataset, please run:
 
 ```
-./naive-baseline.py --rag-responses ../../datasets/spot-check-dataset/runs --output naive-judgments
+./naive-baseline.py judge --rag-responses ../../datasets/spot-check-dataset/runs --output naive-judgments
 ```

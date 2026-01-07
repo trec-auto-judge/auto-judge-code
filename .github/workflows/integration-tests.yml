@@ -40,7 +40,7 @@ jobs:
             --path trec25/judges/naive/ \
             --task trec-auto-judge \
             --dataset spot-check-dataset-20251222_0-training \
-            --command '/naive-baseline.py --rag-responses $inputDataset/runs --rag-topics $inputDataset --output $outputDir/leaderboard.trec'
+            --command '/naive-baseline.py judge --rag-responses $inputDataset/runs --rag-topics $inputDataset --output $outputDir/leaderboard.trec'
 
       - name: Test trec25/judges/pyterrier-retrieval
         run: |
