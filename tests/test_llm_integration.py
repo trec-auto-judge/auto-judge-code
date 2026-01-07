@@ -10,7 +10,6 @@ Prerequisites:
 - OPENAI_API_KEY (or OPENAI_TOKEN) must be set
 """
 
-import dataclasses_json
 import pytest
 import os 
 from trec_auto_judge.llm import (
@@ -20,6 +19,8 @@ from trec_auto_judge.llm import (
     MinimaLlmResponse,
     OpenAIMinimaLlm,
 )
+
+SKIP_LLM_ENDPOINT_TESTS = os.getenv("SKIP_LLM_ENDPOINT_TESTS", "true").lower() in {"1", "true", "yes"}
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +37,10 @@ def _prep_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CACHE_DIR", str(cache_dir))
     print("Set environment, CACHE_DIR =", os.environ["CACHE_DIR"])
 
-
+@pytest.mark.skipif(
+    SKIP_LLM_ENDPOINT_TESTS,
+    reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
+)
 @pytest.mark.asyncio
 async def test_single_request():
     """Test single LLM request doesn't crash"""
@@ -56,7 +60,10 @@ async def test_single_request():
 
     await llm.aclose()
 
-
+@pytest.mark.skipif(
+    SKIP_LLM_ENDPOINT_TESTS,
+    reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
+)
 @pytest.mark.asyncio
 async def test_batch_execution():
     """Test parallel batch execution returns all responses"""
@@ -96,7 +103,10 @@ def test_config_loading():
     assert llm_config.batch is not None
     assert batch_config.num_workers > 0
 
-
+@pytest.mark.skipif(
+    SKIP_LLM_ENDPOINT_TESTS,
+    reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
+)
 @pytest.mark.asyncio
 async def test_prompt_cache(tmp_path):
     """Test SQLite prompt cache works correctly"""
@@ -142,7 +152,10 @@ async def test_prompt_cache(tmp_path):
     await llm.aclose()
 
 
-
+@pytest.mark.skipif(
+    SKIP_LLM_ENDPOINT_TESTS,
+    reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
+)
 @pytest.mark.asyncio
 async def test_dspy_adapter_parse_error_retry():
     """Test that AdapterParseError triggers retry with force_refresh=True.

@@ -4,11 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from trec_auto_judge.workflow import Workflow, load_workflow
-from trec_auto_judge.judge_runner import (
-    _write_run_config,
-    _resolve_config_file_path,
-)
+from trec_auto_judge.workflow import Workflow, load_workflow, resolve_config_file_path
+from trec_auto_judge.judge_runner import _write_run_config
 
 
 class TestWorkflowModel(unittest.TestCase):
@@ -117,22 +114,22 @@ class TestWriteRunConfig(unittest.TestCase):
     def test_resolve_config_file_path_adds_extension(self):
         """Filebase without extension gets .config.yml added."""
         self.assertEqual(
-            _resolve_config_file_path(Path("rubric")),
+            resolve_config_file_path(Path("rubric")),
             Path("rubric.config.yml"),
         )
         self.assertEqual(
-            _resolve_config_file_path(Path("output/rubric")),
+            resolve_config_file_path(Path("output/rubric")),
             Path("output/rubric.config.yml"),
         )
 
     def test_resolve_config_file_path_preserves_yml(self):
         """Filebase with .yml/.yaml extension is used as-is."""
         self.assertEqual(
-            _resolve_config_file_path(Path("custom.yml")),
+            resolve_config_file_path(Path("custom.yml")),
             Path("custom.yml"),
         )
         self.assertEqual(
-            _resolve_config_file_path(Path("custom.yaml")),
+            resolve_config_file_path(Path("custom.yaml")),
             Path("custom.yaml"),
         )
 

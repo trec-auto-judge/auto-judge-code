@@ -1,9 +1,19 @@
 # Rubric judge creates nuggets first, then judges using them
-create_nuggets: true   # Call create_nuggets() to generate/refine nuggets
-judge: true            # Call judge() to produce leaderboard/qrels
+judge_uses_nuggets: true   
+nugget_depends_on_responses: false
+judge: true   # implied
+create_nuggets: true  # implied
+# force_recreate_nuggets: false  # default
+
+# judge_uses_nuggets: false   
+# # nugget_depends_on_responses: false #  implied
+# # judge: true   # implied
+# # create_nuggets: false  # implied
+# # force_recreate_nuggets: false  # default
+
 
 settings:
-  filebase: "{_name}"   # Output: rubric.nuggets.jsonl, rubric.qrels, etc.
+  filebase: "{_name}"
 
 nugget_settings:
   prompt: "minimal"

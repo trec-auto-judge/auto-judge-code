@@ -4,7 +4,15 @@ from .io import load_runs_failsave
 from .request import load_requests_from_irds, load_requests_from_file
 from .llm import MinimaLlmConfig
 from .llm_resolver import ModelPreferences, ModelResolver, ModelResolutionError
-from .workflow import load_workflow, resolve_default, resolve_variant, resolve_sweep
+from .workflow import (
+    load_workflow,
+    resolve_default,
+    resolve_variant,
+    resolve_sweep,
+    KeyValueType,
+    create_cli_default_workflow,
+    apply_cli_workflow_overrides,
+)
 from .judge_runner import run_judge
 from .cli_default_group import DefaultGroup
 import click
@@ -196,61 +204,34 @@ def option_submission():
     return decorator
 
 
-class ClickNuggetBanks(click.ParamType):
-    """Click parameter type for loading nugget banks from file or directory."""
+class ClickNuggetBanksPath(click.ParamType):
+    """Click parameter type for nugget banks path (file or directory)."""
     name = "file-or-dir"
-
-    def _get_nugget_banks_type(self, ctx):
-        """Get NuggetBanks type from auto_judge in context, or None if not defined."""
-        if ctx and hasattr(ctx, "obj") and ctx.obj and "auto_judge" in ctx.obj:
-            auto_judge = ctx.obj["auto_judge"]
-            if hasattr(auto_judge, "nugget_banks_type"):
-                return auto_judge.nugget_banks_type
-        return None  # Judge doesn't use nuggets
 
     def convert(self, value, param, ctx):
         if value is None:
             return None
 
-        from .nugget_data.io import (
-            load_nugget_banks_generic,
-            load_nugget_banks_from_directory_generic,
-        )
-
-        nugget_banks_type = self._get_nugget_banks_type(ctx)
-        if nugget_banks_type is None:
-            self.fail(
-                "This judge does not define nugget_banks_type. "
-                "Cannot load nugget banks for a judge that doesn't use nuggets.",
-                param, ctx
-            )
-
         path = Path(value)
 
-        if path.is_file():
-            try:
-                return load_nugget_banks_generic(path, nugget_banks_type)
-            except Exception as e:
-                self.fail(f"Could not load nugget banks from {value}: {e}", param, ctx)
+        if not path.exists():
+            self.fail(f"Path {value} does not exist", param, ctx)
 
-        if path.is_dir():
-            try:
-                return load_nugget_banks_from_directory_generic(path, nugget_banks_type)
-            except Exception as e:
-                self.fail(f"Could not load nugget banks from directory {value}: {e}", param, ctx)
+        if not path.is_file() and not path.is_dir():
+            self.fail(f"Path {value} is neither a file nor directory", param, ctx)
 
-        self.fail(f"Path {value} is neither a file nor directory", param, ctx)
+        return path
 
 
 def option_nugget_banks():
-    """Optional nugget banks CLI option."""
+    """Optional nugget banks path CLI option (file or directory)."""
     def decorator(func):
         func = click.option(
             "--nugget-banks",
-            type=ClickNuggetBanks(),
+            type=ClickNuggetBanksPath(),
             required=False,
             default=None,
-            help="Nugget banks file (JSON/JSONL) or directory. Optional input for judges that use nuggets."
+            help="Path to nugget banks file (JSON/JSONL) or directory."
         )(func)
         return func
     return decorator
@@ -316,57 +297,63 @@ def _resolve_llm_config(llm_config_path: Optional[Path], submission: bool = Fals
     return MinimaLlmConfig.from_env()
 
 
-def _validate_llm_model_for_submission(
+def _apply_llm_model_override(
+    llm_config: MinimaLlmConfig,
     settings: dict,
     submission: bool,
-) -> dict:
+) -> tuple[MinimaLlmConfig, dict]:
     """
-    Validate llm_model setting against available models in submission mode.
+    Apply llm_model from settings to llm_config and strip it from settings.
 
-    In submission mode, if llm_model is set but not available in the organizer's
-    configuration, it is removed with a warning.
+    Steps:
+    1. Extract llm_model from settings
+    2. Apply it to llm_config via with_model()
+    3. In submission mode, validate the model is allowed by organizer
+    4. Strip llm_model from settings before passing to AutoJudge
 
     Args:
+        llm_config: Base LLM configuration
         settings: Settings dict (may contain 'llm_model')
         submission: Whether we're in submission mode
 
     Returns:
-        Settings dict, possibly with llm_model removed
+        Tuple of (updated_llm_config, settings_without_llm_model)
     """
-    if not submission:
-        return settings
-
     llm_model = settings.get("llm_model")
+    stripped_settings = {k: v for k, v in settings.items() if k != "llm_model"}
+
     if not llm_model:
-        return settings
+        return llm_config, stripped_settings
 
-    # Get available models from organizer configuration
-    try:
-        resolver = ModelResolver.from_env()
-        available = resolver.available
-        enabled_models = available.get_enabled_models()
+    # In submission mode, validate the model is allowed
+    if submission:
+        try:
+            resolver = ModelResolver.from_env()
+            available = resolver.available
+            enabled_models = available.get_enabled_models()
 
-        # Check if model is available (directly or via alias)
-        canonical = available.resolve_alias(llm_model)
-        if canonical in available.models:
-            return settings  # Model is available, keep it
+            # Check if model is available (directly or via alias)
+            canonical = available.resolve_alias(llm_model)
+            if canonical not in available.models:
+                click.echo(
+                    f"Warning: llm_model '{llm_model}' is not available in submission mode. "
+                    f"Available models: {enabled_models}. Ignoring llm_model setting.",
+                    err=True,
+                )
+                return llm_config, stripped_settings
 
-        # Model not available - warn and remove
-        click.echo(
-            f"Warning: llm_model '{llm_model}' is not available in submission mode. "
-            f"Available models: {enabled_models}. Ignoring llm_model setting.",
-            err=True,
-        )
-        # Return settings without llm_model
-        return {k: v for k, v in settings.items() if k != "llm_model"}
+        except Exception as e:
+            click.echo(
+                f"Warning: Could not validate llm_model against available models: {e}. "
+                f"Ignoring llm_model setting.",
+                err=True,
+            )
+            return llm_config, stripped_settings
 
-    except Exception as e:
-        click.echo(
-            f"Warning: Could not validate llm_model against available models: {e}. "
-            f"Ignoring llm_model setting.",
-            err=True,
-        )
-        return {k: v for k, v in settings.items() if k != "llm_model"}
+    # Apply the model override
+    updated_config = llm_config.with_model(llm_model)
+    click.echo(f"Model override from settings: {llm_model}", err=True)
+    return updated_config, stripped_settings
 
 
 def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
@@ -412,7 +399,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             rag_responses=rag_responses,
             rag_topics=list(rag_topics),
             llm_config=resolved_config,
-            nugget_banks=nugget_banks,
+            nugget_banks_path=nugget_banks,
             judge_output_path=output,
             do_create_nuggets=False,
             do_judge=True,
@@ -441,7 +428,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
             rag_responses=rag_responses,
             rag_topics=list(rag_topics),
             llm_config=resolved_config,
-            nugget_banks=nugget_banks,
+            nugget_banks_path=nugget_banks,
             judge_output_path=None,
             nugget_output_path=store_nuggets,
             do_create_nuggets=True,
@@ -471,7 +458,8 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @option_nugget_banks()
     @option_llm_config()
     @option_submission()
-    @click.option("--filebase", type=str, help="Override workflow filebase (e.g., 'output/my-run').", required=False)
+    @click.option("--out-dir", type=Path, help="Parent directory for all output files.", required=False)
+    @click.option("--filebase", type=str, help="Override workflow filebase (e.g., 'my-run').", required=False)
     @click.option("--store-nuggets", type=Path, help="Override nugget output path.", required=False)
     @click.option("--variant", type=str, help="Run a named variant from workflow.yml (e.g., --variant $name).", required=False)
     @click.option("--sweep", type=str, help="Run a parameter sweep from workflow.yml (e.g., --sweep $name).", required=False)
@@ -479,6 +467,16 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
     @click.option("--force-recreate-nuggets", is_flag=True, help="Recreate nuggets even if file exists.")
     @click.option("--create-nuggets/--no-create-nuggets", default=None, help="Override workflow create_nuggets flag.")
     @click.option("--judge/--no-judge", "do_judge", default=None, help="Override workflow judge flag.")
+    @click.option("--set", "-S", "settings_overrides", multiple=True, type=KeyValueType(),
+                  help="Override shared settings: --set key=value")
+    @click.option("--nset", "-N", "nugget_settings_overrides", multiple=True, type=KeyValueType(),
+                  help="Override nugget settings: --nset key=value")
+    @click.option("--jset", "-J", "judge_settings_overrides", multiple=True, type=KeyValueType(),
+                  help="Override judge settings: --jset key=value")
+    @click.option("--nugget-depends-on-responses/--no-nugget-depends-on-responses",
+                  default=None, help="Override nugget_depends_on_responses lifecycle flag.")
+    @click.option("--nugget-judge/--no-nugget-judge", "judge_uses_nuggets",
+                  default=None, help="Judge uses nuggets (REQUIRED when --workflow omitted).")
     def run_cmd(
         workflow: Optional[Path],
         rag_responses: Iterable[Report],
@@ -486,6 +484,7 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         nugget_banks,
         llm_config: Optional[Path],
         submission: bool,
+        out_dir: Optional[Path],
         filebase: Optional[str],
         store_nuggets: Optional[Path],
         variant: Optional[str],
@@ -494,32 +493,48 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         force_recreate_nuggets: bool,
         create_nuggets: Optional[bool],
         do_judge: Optional[bool],
+        settings_overrides: tuple,
+        nugget_settings_overrides: tuple,
+        judge_settings_overrides: tuple,
+        nugget_depends_on_responses: Optional[bool],
+        judge_uses_nuggets: Optional[bool],
     ):
         """Run judge according to workflow.yml (default command)."""
-        # Load workflow
+        # Load workflow or create default based on CLI flags
         if workflow:
             wf = load_workflow(workflow)
             click.echo(f"Loaded workflow: create_nuggets={wf.create_nuggets}, judge={wf.judge}", err=True)
         else:
-            raise click.UsageError(
-                "No --workflow file provided.\n\n"
-                "The 'run' command requires a workflow.yml file to configure the judge pipeline.\n\n"
-                "Usage:\n"
-                f"  {cmd_name} run --workflow workflow.yml ...\n\n"
-                "Alternatively, use explicit subcommands."
-            )
+            # No workflow file - require --nugget-judge flag
+            if judge_uses_nuggets is None:
+                raise click.UsageError(
+                    "No --workflow file provided.\n\n"
+                    "When running without workflow.yml, you must specify:\n"
+                    "  --nugget-judge     (creates nuggets, then judges with them)\n"
+                    "  --no-nugget-judge  (judge only, no nugget creation)\n"
+                )
+            wf = create_cli_default_workflow(judge_uses_nuggets)
+            click.echo(f"Using CLI defaults: create_nuggets={wf.create_nuggets}, judge={wf.judge}", err=True)
 
-        # Validate mutually exclusive options
-        options_set = sum([bool(variant), bool(sweep), all_variants])
-        if options_set > 1:
-            raise click.UsageError("--variant, --sweep, and --all-variants are mutually exclusive.")
-
-        resolved_llm_config = _resolve_llm_config(llm_config, submission)
+        # Apply CLI overrides to workflow
+        apply_cli_workflow_overrides(
+            wf,
+            settings_overrides,
+            nugget_settings_overrides,
+            judge_settings_overrides,
+            nugget_depends_on_responses,
+            judge_uses_nuggets,
+        )
 
         # CLI --filebase overrides workflow settings.filebase
         if filebase:
             wf.settings["filebase"] = filebase
             click.echo(f"Filebase override: {filebase}", err=True)
+
+        # Validate mutually exclusive options
+        options_set = sum([bool(variant), bool(sweep), all_variants])
+        if options_set > 1:
+            raise click.UsageError("--variant, --sweep, and --all-variants are mutually exclusive.")
 
         # Resolve configurations based on CLI options
         if variant:
@@ -533,6 +548,10 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         else:
             configs = [resolve_default(wf)]
 
+
+        # Step 1: Load base LLM config from file/env
+        base_llm_config = _resolve_llm_config(llm_config, submission)
+
         # Convert rag_topics to list once (it's an iterable)
         topics_list = list(rag_topics)
 
@@ -540,59 +559,51 @@ def auto_judge_to_click_command(auto_judge: AutoJudge, cmd_name: str):
         for config in configs:
             click.echo(f"\n=== Running configuration: {config.name} ===", err=True)
 
-            # Validate llm_model against available models in submission mode
-            validated_settings = _validate_llm_model_for_submission(config.settings, submission)
+            # Step 2-4: Apply llm_model from settings, validate in submission mode, strip from settings
+            effective_llm_config, clean_settings = _apply_llm_model_override(
+                base_llm_config, config.settings, submission
+            )
 
             # Determine output paths: --store-nuggets overrides, otherwise use resolved config
             # (--filebase was already injected into wf.settings before resolution)
             nugget_output_path = store_nuggets or config.nugget_output_path
             judge_output_path = config.judge_output_path
 
+            # Apply --out-dir prefix to output paths
+            if out_dir:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                if nugget_output_path:
+                    nugget_output_path = out_dir / nugget_output_path
+                if judge_output_path:
+                    judge_output_path = out_dir / judge_output_path
+
             if nugget_output_path:
                 click.echo(f"Nugget output: {nugget_output_path}", err=True)
             if judge_output_path:
                 click.echo(f"Judge output: {judge_output_path}", err=True)
 
-            # Determine nugget_banks_type: CLI workflow takes precedence, then auto_judge attribute
-            nugget_banks_type = wf.nugget_banks_type
-            if not nugget_banks_type or nugget_banks_type == "trec_auto_judge.nugget_data.NuggetBanks":
-                # Check auto_judge for a more specific type
-                auto_judge_type = getattr(auto_judge, "nugget_banks_type", None)
-                if auto_judge_type:
-                    nugget_banks_type = auto_judge_type
-
-            # Resolve nugget banks: CLI --nugget-banks, then workflow nugget_input
-            effective_nugget_banks = nugget_banks
-            if effective_nugget_banks is None and config.nugget_input_path:
-                from .nugget_data.io import load_nugget_banks_generic
-                if config.nugget_input_path.exists():
-                    click.echo(f"Loading nuggets from workflow nugget_input: {config.nugget_input_path}", err=True)
-                    effective_nugget_banks = load_nugget_banks_generic(
-                        config.nugget_input_path, nugget_banks_type
-                    )
-
             # CLI flags override workflow settings (None means use workflow default)
             effective_create_nuggets = create_nuggets if create_nuggets is not None else wf.create_nuggets
             effective_do_judge = do_judge if do_judge is not None else wf.judge
 
+            # each returns a JudgeResult object to contain Leaderboard, Qrels, Nuggets for meta-evaluation
             run_judge(
                 auto_judge=auto_judge,
                 rag_responses=rag_responses,
                 rag_topics=topics_list,
-                llm_config=resolved_llm_config,
-                nugget_banks=effective_nugget_banks,
+                llm_config=effective_llm_config,
+                nugget_banks_path=nugget_banks,
                 judge_output_path=judge_output_path,
                 nugget_output_path=nugget_output_path,
                 do_create_nuggets=effective_create_nuggets,
                 do_judge=effective_do_judge,
-                settings=validated_settings,
+                settings=clean_settings,
                 nugget_settings=config.nugget_settings,
                 judge_settings=config.judge_settings,
                 # Lifecycle flags
                 force_recreate_nuggets=force_recreate_nuggets or wf.force_recreate_nuggets,
                 nugget_depends_on_responses=wf.nugget_depends_on_responses,
                 judge_uses_nuggets=wf.judge_uses_nuggets,
-                nugget_banks_type=nugget_banks_type,
                 config_name=config.name,
             )
 

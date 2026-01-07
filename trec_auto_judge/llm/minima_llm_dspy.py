@@ -11,7 +11,47 @@ import re
 
 import dspy
 from dspy.adapters.chat_adapter import ChatAdapter
-from dspy.utils.exceptions import AdapterParseError
+
+def _import_adapter_parse_error():
+    """Locate AdapterParseError across DSPy versions.
+    0.1.3 - 0.1.6 (pre-refactor)
+    0.1.7 -  0.1.9 (adapter split)
+    early 0.2.x nightlies (exceptions module split)
+    """
+    paths = [
+        "dspy.adapters.exceptions",
+        "dspy.adapters.base",
+        "dspy.adapters",
+        "dspy.primitives.exceptions",
+        "dspy.exceptions",
+        "dspy.utils.exceptions",
+    ]
+
+    for path in paths:
+        try:
+            module = __import__(path, fromlist=["AdapterParseError"])
+            return module.AdapterParseError
+        except (ImportError, AttributeError):
+            continue
+
+    # Fallback: define compatible exception for older DSPy versions
+    dspy_version = getattr(dspy, "__version__", "unknown")
+    print(f"Warning: AdapterParseError not found in DSPy {dspy_version}, using fallback class")
+
+    class AdapterParseError(Exception):
+        """Fallback AdapterParseError for DSPy versions without this exception."""
+        def __init__(self, adapter_name=None, signature=None, lm_response=None,
+                     parsed_result=None, message=None, **kwargs):
+            self.adapter_name = adapter_name
+            self.signature = signature
+            self.lm_response = lm_response
+            self.parsed_result = parsed_result
+            super().__init__(message or "Adapter parse error")
+
+    return AdapterParseError
+
+
+AdapterParseError = _import_adapter_parse_error()
 
 from pydantic import BaseModel
 
@@ -127,6 +167,7 @@ class TolerantChatAdapter(ChatAdapter):
 
     
 dspy.settings.configure(adapter=TolerantChatAdapter())
+
 
 
 # ==============
@@ -520,38 +561,62 @@ async def run_dspy_batch(
         backend = OpenAIMinimaLlm.from_env()
 
     lm = MinimaLlmDSPyLM(backend)
-    with dspy.context(lm=lm):
 
+    # Get input field names from signature
+    input_fields = _get_input_field_names(signature_class)
+
+    # Code errors that should propagate immediately (not retry)
+    CODE_ERRORS = (NameError, TypeError, AttributeError, SyntaxError, ImportError)
+
+    # max_attempts controls HTTP retries in generate().
+    # For parse-error retries here, use a reasonable default if max_attempts=0 (infinite HTTP retries).
+    # This separates concerns: generate() handles server errors, process_one() handles parse errors.
+    http_max_attempts = backend.cfg.max_attempts
+    parse_retry_limit = 3 if http_max_attempts == 0 else http_max_attempts
+
+    # Use dspy.context() instead of dspy.configure() to support multiple asyncio.run() calls.
+    # dspy.configure() binds to the async task that first called it, causing errors when
+    # reused across separate event loops. dspy.context() is task-local and safe for reuse.
+    with dspy.context(lm=lm):
         predictor = predictor_class(signature_class)
 
-        # Get input field names from signature
-        input_fields = _get_input_field_names(signature_class)
+        async def _maybe_await(result):
+            """Await if awaitable, otherwise return value directly."""
+            if inspect.isawaitable(result):
+                return await result
+            return result
 
-        # Code errors that should propagate immediately (not retry)
-        CODE_ERRORS = (NameError, TypeError, AttributeError, SyntaxError, ImportError)
+        async def invoke_predictor(pred, **kw):
+            """Invoke predictor with version-tolerant async/sync handling."""
+            import functools
 
-        # max_attempts controls HTTP retries in generate().
-        # For parse-error retries here, use a reasonable default if max_attempts=0 (infinite HTTP retries).
-        # This separates concerns: generate() handles server errors, process_one() handles parse errors.
-        http_max_attempts = backend.cfg.max_attempts
-        parse_retry_limit = 3 if http_max_attempts == 0 else http_max_attempts
+            # Try async methods first: acall, aforward
+            for method_name in ("acall", "aforward"):
+                method = getattr(pred, method_name, None)
+                if callable(method):
+                    return await _maybe_await(method(**kw))
+
+            # Sync fallback: __call__ via run_in_executor to not block event loop
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, functools.partial(pred, **kw))
 
         # Process each annotation
         async def process_one(obj: BaseModel) -> BaseModel:
             # Extract input kwargs from annotation object
-            kwargs = obj.model_dump(include=set(input_fields))
+            kw = obj.model_dump(include=set(input_fields))
 
             last_error: Optional[Exception] = None
-            force_refresh_token: Optional[contextvars.Token[bool]] = None
 
             for attempt in range(parse_retry_limit):
+                # Per-attempt force_refresh token (scoped to this attempt)
+                force_refresh_token: Optional[contextvars.Token[bool]] = None
                 try:
                     # On retry, force refresh to bypass cached response that caused error
                     if attempt > 0:
                         force_refresh_token = set_force_refresh(True)
 
                     # Run prediction
-                    result = await predictor.acall(**kwargs)
+                    result = await invoke_predictor(predictor, **kw)
 
                     # Update annotation with results
                     output_converter(result, obj)
@@ -570,9 +635,9 @@ async def run_dspy_batch(
                     last_error = e
                     continue
                 finally:
+                    # Always reset force_refresh token if set
                     if force_refresh_token is not None:
                         reset_force_refresh(force_refresh_token)
-                        force_refresh_token = None
 
             # All retries exhausted
             raise last_error  # type: ignore[misc]
@@ -580,24 +645,24 @@ async def run_dspy_batch(
         # Execute batch - returns List[Union[BaseModel, MinimaLlmFailure]]
         results = await backend.run_batched_callable(annotation_objs, process_one)
 
-        # Check for failures - fail fast, don't silently drop data
-        failures = [r for r in results if isinstance(r, MinimaLlmFailure)]
-        if failures:
-            # Cleanup before raising
-            if owns_backend:
-                await backend.aclose()
-            # Report failures
-            msgs = [f"{f.request_id}: {f.error_type}: {f.message}" for f in failures[:5]]
-            raise RuntimeError(
-                f"{len(failures)} DSPy predictions failed:\n  " + "\n  ".join(msgs)
-            )
-
-        # Cleanup
+    # Check for failures - fail fast, don't silently drop data
+    failures = [r for r in results if isinstance(r, MinimaLlmFailure)]
+    if failures:
+        # Cleanup before raising
         if owns_backend:
             await backend.aclose()
+        # Report failures
+        msgs = [f"{f.request_id}: {f.error_type}: {f.message}" for f in failures[:5]]
+        raise RuntimeError(
+            f"{len(failures)} DSPy predictions failed:\n  " + "\n  ".join(msgs)
+        )
 
-        # All results are BaseModel (failures already raised)
-        return cast(List[BaseModel], results)
+    # Cleanup
+    if owns_backend:
+        await backend.aclose()
+
+    # All results are BaseModel (failures already raised)
+    return cast(List[BaseModel], results)
 
 
 
