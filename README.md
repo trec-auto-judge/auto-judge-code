@@ -66,12 +66,63 @@ This code will handle obtaining data sets (akin to `ir_datasets`), input/output 
 Initial code is in the [trec_auto_judge](trec_auto_judge) directory (**attention: this is in the very early brain storming phase**).
 
 
-## Installation 
+## Installation
 
-You can install the early prototype via:
+### Using uv (recommended)
 
+```bash
+# Install uv if you don't have it
+pip install uv
+
+# Development install with virtual environment
+git clone https://github.com/trec-auto-judge/auto-judge-code.git
+cd auto-judge-code
+
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# Install base package
+uv pip install -e .
+
+Please also install ir_datasets without dependencies. The without dependencies is needed because some transitive dependencies of ir_datasets currently break the installation, this is already fixed in the ir_datasets main branch but not yet on pypi, so as soon as this is on pypi we can move ir_datasets to the normal dependencies.
+
+uv pip install --no-deps ir_datasets
+
+# Install with test dependencies
+uv pip install -e ".[test]"
+
+# Install with DSPy support (adds litellm, optuna, etc.)
+uv pip install -e ".[dspy]"
+
+# Full development install
+uv pip install -e ".[test,dspy,ir_datasets]"
 ```
-pip3 install git+https://github.com/trec-auto-judge/auto-judge-code.git
+
+### Install directly
+
+```bash
+uv pip install git+https://github.com/trec-auto-judge/auto-judge-code.git
+```
+
+### Optional Dependencies
+
+| Extra | Command | Description |
+|-------|---------|-------------|
+| `dspy` | `pip install ".[dspy]"` | DSPy integration (adds ~50 transitive deps including litellm, optuna) |
+| `test` | `pip install ".[test]"` | Test dependencies (pytest, coverage) |
+
+### Using pip (alternative)
+
+```bash
+# Optional: Create virtual environment first
+python3 -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# Install
+pip install git+https://github.com/trec-auto-judge/auto-judge-code.git
 ```
 
 ## Rationale

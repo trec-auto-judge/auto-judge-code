@@ -1,12 +1,13 @@
 FROM ubuntu:jammy
 
-
 RUN apt-get update \
 	&& apt-get install -y git python3 python3-pip
 
-ADD requirements.txt /tmp/requirements.txt
+RUN pip3 install uv
 
-RUN pip3 install -r /tmp/requirements.txt
+# Install main package from git + local extras
+RUN uv pip install --system git+https://github.com/trec-auto-judge/auto-judge-code.git \
+	&& uv pip install --system tqdm
 
 ENV OPENAI_BASE_URL=does-not-exist
 ENV OPENAI_MODEL=does-not-exist

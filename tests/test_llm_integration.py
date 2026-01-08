@@ -20,8 +20,9 @@ from trec_auto_judge.llm import (
     OpenAIMinimaLlm,
 )
 
-SKIP_LLM_ENDPOINT_TESTS = os.getenv("SKIP_LLM_ENDPOINT_TESTS", "true").lower() in {"1", "true", "yes"}
 
+def skip_llm_tests() -> bool:
+    return os.getenv("SKIP_LLM_ENDPOINT_TESTS", "true").lower() in {"1", "true", "yes"}
 
 @pytest.fixture(autouse=True)
 def _prep_env(monkeypatch, tmp_path):
@@ -38,7 +39,7 @@ def _prep_env(monkeypatch, tmp_path):
     print("Set environment, CACHE_DIR =", os.environ["CACHE_DIR"])
 
 @pytest.mark.skipif(
-    SKIP_LLM_ENDPOINT_TESTS,
+    skip_llm_tests(),
     reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
 )
 @pytest.mark.asyncio
@@ -61,7 +62,7 @@ async def test_single_request():
     await llm.aclose()
 
 @pytest.mark.skipif(
-    SKIP_LLM_ENDPOINT_TESTS,
+    skip_llm_tests(),
     reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
 )
 @pytest.mark.asyncio
@@ -104,7 +105,7 @@ def test_config_loading():
     assert batch_config.num_workers > 0
 
 @pytest.mark.skipif(
-    SKIP_LLM_ENDPOINT_TESTS,
+    skip_llm_tests(),
     reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
 )
 @pytest.mark.asyncio
@@ -153,7 +154,7 @@ async def test_prompt_cache(tmp_path):
 
 
 @pytest.mark.skipif(
-    SKIP_LLM_ENDPOINT_TESTS,
+    skip_llm_tests(),
     reason="Skipping LLM endpoint tests (SKIP_LLM_ENDPOINT_TESTS set)"
 )
 @pytest.mark.asyncio

@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trec_auto_judge"
+dynamic = ["version"]
+description = "The trec_auto_judge package aims to provide a set of shared code for the evaluation and data wrangling for the TREC Auto Judge shared tasks."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10,<3.15"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "click",
+    "pandas",
+    "numpy",
+    "scipy",
+    "tira>=0.0.192",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dspy = [
+    "dspy>=2.0",
+]
+ir_datasets = [
+    "ir_datasets"
+]
+test = [
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0,<6",
+    "approvaltests>=16.0.0",
+    "parameterized",
+    "coverage-badge",
+]
+
+[project.scripts]
+trec-auto-judge = "trec_auto_judge:main"
+
+[project.urls]
+Homepage = "https://github.com/trec-auto-judge/auto-judge-code"
+"Bug Tracker" = "https://github.com/trec-auto-judge/auto-judge-code/issues"
+
+[tool.hatch.version]
+path = "trec_auto_judge/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trec_auto_judge"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E203"]

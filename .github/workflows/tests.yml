@@ -34,5 +34,6 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SKIP_LLM_ENDPOINT_TESTS: ${{ vars.SKIP_LLM_ENDPOINT_TESTS }}
         run: |
           python3 -m pytest --cov-report term --cov=trec_auto_judge tests
