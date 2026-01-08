@@ -13,6 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        dspy-version: ["2.6.27", "3.0.0", "3.1.0"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -24,6 +25,9 @@ jobs:
         run: |
           pip3 install .[test]
           pip3 install --no-deps ir_datasets
+          pip3 uninstall uninstall -y dspy
+          pip3 install dspy==${{ matrix.dspy-version }}
+          pip3 freeze|grep dspy
       - name: Run unit tests
         working-directory: ${{github.workspace}}/
         env:

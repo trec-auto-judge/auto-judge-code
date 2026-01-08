@@ -40,7 +40,7 @@ jobs:
             --path trec25/judges/naive/ \
             --task trec-auto-judge \
             --dataset spot-check-dataset-20251222_0-training \
-            --command '/naive-baseline.py --rag-responses $inputDataset/runs --rag-topics $inputDataset --output $outputDir/leaderboard.trec'
+            --command '/naive-baseline.py judge --rag-responses $inputDataset/runs --rag-topics $inputDataset --output $outputDir/leaderboard.trec'
 
       - name: Test trec25/judges/pyterrier-retrieval
         run: |
@@ -49,7 +49,7 @@ jobs:
             --path trec25/judges/pyterrier-retrieval/ \
             --task trec-auto-judge \
             --dataset spot-check-dataset-20251222_0-training \
-            --command '/retrieval-judge.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
+            --command '/retrieval-judge.py judge --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
 
       - name: Test trec25/judges/umbrela/
         env:
@@ -69,4 +69,4 @@ jobs:
             --path trec25/judges/umbrela/ \
             --task trec-auto-judge \
             --dataset spot-check-dataset-20251222_0-training \
-            --command '/umbrela_baseline.py --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'
+            --command '/umbrela_baseline.py judge --rag-topics $inputDataset --rag-responses $inputDataset/runs --output $outputDir/leaderboard.trec'

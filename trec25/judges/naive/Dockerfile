@@ -9,4 +9,8 @@ RUN pip3 install uv
 RUN uv pip install --system git+https://github.com/trec-auto-judge/auto-judge-code.git \
 	&& uv pip install --system tqdm
 
+ENV OPENAI_BASE_URL=does-not-exist
+ENV OPENAI_MODEL=does-not-exist
+ENV OPENAI_API_KEY=does-not-exist
+
 ADD naive-baseline.py /naive-baseline.py

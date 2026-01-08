@@ -49,6 +49,7 @@ UMBRELA reproduction with other LLMs (like Llama3.3)
 
 ```bash
 ./trec25/judges/umbrela/umbrela-baseline.py \ 
+judge \
 --rag-responses $participantRunsDir \
 --rag-topics trec25/datasets/rag25/trec_rag_2025_requests.jsonl \
 --output $out

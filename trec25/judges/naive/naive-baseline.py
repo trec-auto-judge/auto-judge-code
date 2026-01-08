@@ -45,7 +45,7 @@ class NaiveJudge(AutoJudge):
             ret.add(run_id=rag_response.metadata.run_id, topic_id=rag_response.metadata.topic_id, values=vals)
 
         leaderboard = ret.build()
-        LeaderboardVerification(leaderboard).all()
+        LeaderboardVerification(leaderboard, on_missing="ignore").all()
         return leaderboard, None
 
 
