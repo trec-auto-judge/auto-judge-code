@@ -29,12 +29,14 @@ dependencies = [
     "scipy",
     "tira>=0.0.192",
     "pydantic>=2.0",
-    "ir_datasets",
 ]
 
 [project.optional-dependencies]
 dspy = [
     "dspy>=2.0",
+]
+ir_datasets = [
+    "ir_datasets"
 ]
 test = [
     "pytest>=8.0,<9",

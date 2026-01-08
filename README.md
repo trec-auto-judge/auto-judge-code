@@ -86,6 +86,10 @@ source .venv/bin/activate  # Linux/macOS
 # Install base package
 uv pip install -e .
 
+Please also install ir_datasets without dependencies. The without dependencies is needed because some transitive dependencies of ir_datasets currently break the installation, this is already fixed in the ir_datasets main branch but not yet on pypi, so as soon as this is on pypi we can move ir_datasets to the normal dependencies.
+
+uv pip install --no-deps ir_datasets
+
 # Install with test dependencies
 uv pip install -e ".[test]"
 
@@ -93,7 +97,7 @@ uv pip install -e ".[test]"
 uv pip install -e ".[dspy]"
 
 # Full development install
-uv pip install -e ".[test,dspy]"
+uv pip install -e ".[test,dspy,ir_datasets]"
 ```
 
 ### Install directly
