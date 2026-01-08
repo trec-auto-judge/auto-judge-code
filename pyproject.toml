@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "The trec_auto_judge package aims to provide a set of shared code for the evaluation and data wrangling for the TREC Auto Judge shared tasks."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10,<=3.14"
+requires-python = ">=3.10,<3.15"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
