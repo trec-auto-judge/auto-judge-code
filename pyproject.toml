@@ -29,11 +29,13 @@ dependencies = [
     "scipy",
     "tira>=0.0.192",
     "pydantic>=2.0",
-    "dataclasses-json",
     "ir_datasets",
 ]
 
 [project.optional-dependencies]
+dspy = [
+    "dspy>=2.0",
+]
 test = [
     "pytest>=8.0,<9",
     "pytest-asyncio>=0.23",
@@ -41,7 +43,6 @@ test = [
     "approvaltests>=16.0.0",
     "parameterized",
     "coverage-badge",
-    "dspy>=2.0",
 ]
 
 [project.scripts]

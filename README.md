@@ -74,10 +74,7 @@ Initial code is in the [trec_auto_judge](trec_auto_judge) directory (**attention
 # Install uv if you don't have it
 pip install uv
 
-# Option 1: Install directly
-uv pip install git+https://github.com/trec-auto-judge/auto-judge-code.git
-
-# Option 2: Development install with virtual environment
+# Development install with virtual environment
 git clone https://github.com/trec-auto-judge/auto-judge-code.git
 cd auto-judge-code
 
@@ -86,9 +83,31 @@ uv venv
 source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate   # Windows
 
+# Install base package
+uv pip install -e .
+
 # Install with test dependencies
 uv pip install -e ".[test]"
+
+# Install with DSPy support (adds litellm, optuna, etc.)
+uv pip install -e ".[dspy]"
+
+# Full development install
+uv pip install -e ".[test,dspy]"
 ```
+
+### Install directly
+
+```bash
+uv pip install git+https://github.com/trec-auto-judge/auto-judge-code.git
+```
+
+### Optional Dependencies
+
+| Extra | Command | Description |
+|-------|---------|-------------|
+| `dspy` | `pip install ".[dspy]"` | DSPy integration (adds ~50 transitive deps including litellm, optuna) |
+| `test` | `pip install ".[test]"` | Test dependencies (pytest, coverage) |
 
 ### Using pip (alternative)
 
