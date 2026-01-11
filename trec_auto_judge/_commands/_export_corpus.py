@@ -32,7 +32,7 @@ def export_corpus(corpus_directory: Path) -> int:
 
     irds_id = load_hf_dataset_config_or_none(corpus_directory / "README.md", ["ir_dataset"])["ir_dataset"]["ir_datasets_id"]
     ds = ir_datasets.load(irds_id)
-    docs_store = ds.docs_store()
+
     irds_loader = IrDatasetsLoader()
     irds_loader.load_dataset_for_fullrank(
         irds_id,
@@ -43,6 +43,7 @@ def export_corpus(corpus_directory: Path) -> int:
     )
 
     print(f"I export {len(all_docs)} documents that are referenced.")
+    docs_store = ds.docs_store()
     with gzip.open(corpus_directory / "corpus.jsonl.gz", "wt") as f:
         for doc_id in tqdm(sorted(list(all_docs)), "Persist documents"):
             doc = docs_store.get(doc_id)
