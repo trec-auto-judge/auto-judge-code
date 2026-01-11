@@ -24,6 +24,7 @@ jobs:
         run: |
           pip3 install .[test]
           pip3 install --no-deps ir_datasets
+          pip3 install lz4
           pip3 uninstall -y dspy
       - name: Run unit tests
         working-directory: ${{github.workspace}}/
