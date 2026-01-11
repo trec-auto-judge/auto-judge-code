@@ -5,6 +5,8 @@ from click.testing import CliRunner
 from . import TREC_25_DATA
 from shutil import copytree
 from pathlib import Path
+import gzip
+import json
 
 class TestExportCorpora(unittest.TestCase):
     def test_fails_on_wrong_directory(self):
@@ -29,7 +31,22 @@ class TestExportCorpora(unittest.TestCase):
             runner = CliRunner()
             result = runner.invoke(main, ["export-corpus", str(target_dir)])
 
-            self.assertTrue(target_path.is_file())            
+            print(result.exception)
+            print(result.output)
+            self.assertTrue(target_path.is_file())
             self.assertIsNone(result.exception)
             self.assertEqual(result.exit_code, 0)
             self.assertIn('{"query_id": "220", "text": "find a calculation procedure applicable', target_path.read_text())
+
+            docs_path = Path(target_dir) / "corpus.jsonl.gz"
+            self.assertTrue(docs_path.is_file())
+
+            docs = []
+            with gzip.open(docs_path, "rt") as f:
+                for l in f:
+                    docs.append(json.loads(l))
+
+            self.assertEqual(2, len(docs))
+            self.assertIn('{"docno": "224", "text": "quasi-cylindrical surfaces', json.dumps(docs[0]))
+            self.assertIn('{"docno": "279", "text": "supersonic drag calculations', json.dumps(docs[1]))
+
