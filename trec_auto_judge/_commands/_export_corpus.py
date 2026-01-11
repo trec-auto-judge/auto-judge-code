@@ -25,10 +25,10 @@ def export_corpus(corpus_directory: Path) -> int:
 
     for run in runs:
         for reference in run.references:
-            all_docs.add(reference)
+            all_docs.add(str(reference))
         for i in run.responses:
             for reference in i.citations:
-                all_docs.add(reference)
+                all_docs.add(str(reference))
 
     irds_id = load_hf_dataset_config_or_none(corpus_directory / "README.md", ["ir_dataset"])["ir_dataset"]["ir_datasets_id"]
     ds = ir_datasets.load(irds_id)
@@ -46,7 +46,10 @@ def export_corpus(corpus_directory: Path) -> int:
     docs_store = ds.docs_store()
     with gzip.open(corpus_directory / "corpus.jsonl.gz", "wt") as f:
         for doc_id in tqdm(sorted(list(all_docs)), "Persist documents"):
-            doc = docs_store.get(doc_id)
-            f.write(irds_loader.map_doc(doc, False) + "\n")
+            try:
+                doc = docs_store.get(doc_id)
+                f.write(irds_loader.map_doc(doc, False) + "\n")
+            except:
+                continue
 
     return 0
