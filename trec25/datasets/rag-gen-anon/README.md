@@ -30,6 +30,8 @@ ir_dataset:
 
 # TREC RAG GEN Submissions
 
+**Important: the ir_datasets ID is currently not yet available in the main branch, it is currently only available here: [https://github.com/mam10eks/ir_datasets/tree/add-msmarco-v2.1-trec-rag](https://github.com/mam10eks/ir_datasets/tree/add-msmarco-v2.1-trec-rag).**
+
 # Internal: Construction of datasets:
 
 On Gammaweb02 as root
